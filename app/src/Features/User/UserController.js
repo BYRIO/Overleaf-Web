@@ -55,11 +55,11 @@ function _sendSecurityAlertPasswordChanged(user) {
 }
 
 async function _ensureAffiliation(userId, emailData) {
-  if (emailData.samlProviderId) {
-    await UserUpdater.promises.confirmEmail(userId, emailData.email)
-  } else {
-    await UserUpdater.promises.addAffiliationForNewUser(userId, emailData.email)
-  }
+	if (emailData.samlProviderId) {
+		await UserUpdater.promises.confirmEmail(userId, emailData.email)
+	} else {
+		await UserUpdater.promises.addAffiliationForNewUser(userId, emailData.email)
+	}
 }
 
 async function changePassword(req, res, next) {
@@ -141,42 +141,42 @@ async function clearSessions(req, res, next) {
 }
 
 async function ensureAffiliation(user) {
-  if (!Features.hasFeature('affiliations')) {
-    return
-  }
+	if (!Features.hasFeature('affiliations')) {
+		return
+	}
 
-  const flaggedEmails = user.emails.filter(email => email.affiliationUnchecked)
-  if (flaggedEmails.length === 0) {
-    return
-  }
+	const flaggedEmails = user.emails.filter(email => email.affiliationUnchecked)
+	if (flaggedEmails.length === 0) {
+		return
+	}
 
-  if (flaggedEmails.length > 1) {
-    logger.error(
-      { userId: user._id },
-      `Unexpected number of flagged emails: ${flaggedEmails.length}`
-    )
-  }
+	if (flaggedEmails.length > 1) {
+		logger.error(
+			{ userId: user._id },
+			`Unexpected number of flagged emails: ${flaggedEmails.length}`
+		)
+	}
 
-  await _ensureAffiliation(user._id, flaggedEmails[0])
+	await _ensureAffiliation(user._id, flaggedEmails[0])
 }
 
 async function ensureAffiliationMiddleware(req, res, next) {
-  let user
-  if (!Features.hasFeature('affiliations') || !req.query.ensureAffiliation) {
-    return next()
-  }
-  const userId = AuthenticationController.getLoggedInUserId(req)
-  try {
-    user = await UserGetter.promises.getUser(userId)
-  } catch (error) {
-    return new Errors.UserNotFoundError({ info: { userId } })
-  }
-  try {
-    await ensureAffiliation(user)
-  } catch (error) {
-    return next(error)
-  }
-  return next()
+	let user
+	if (!Features.hasFeature('affiliations') || !req.query.ensureAffiliation) {
+		return next()
+	}
+	const userId = AuthenticationController.getLoggedInUserId(req)
+	try {
+		user = await UserGetter.promises.getUser(userId)
+	} catch (error) {
+		return new Errors.UserNotFoundError({ info: { userId } })
+	}
+	try {
+		await ensureAffiliation(user)
+	} catch (error) {
+		return next(error)
+	}
+	return next()
 }
 
 const UserController = {
@@ -474,7 +474,27 @@ const UserController = {
       }
     )
   },
-
+  registerPublic(req, res, next) {
+	const { email } = req.body
+	valid_edu = (/bupt.edu.cn\s*$/.test(email))
+	valid_bupt = (/bupt.cn\s*$/.test(email))
+	if (email == null || email === '' || (!valid_edu && !valid_bupt)) {
+		return res.sendStatus(422) // Unprocessable Entity
+	}
+	UserRegistrationHandler.registerNewUserAndSendActivationEmail(
+		email,
+		(error, user, setNewPasswordUrl) => {
+			if (error != null) {
+				return next(error)
+			}
+			setNewPasswordUrl = "Please check your inbox."
+			res.json({
+				email: user.email,
+				setNewPasswordUrl
+			})
+		}
+	)
+  },
   changePassword: expressify(changePassword),
 }
 
