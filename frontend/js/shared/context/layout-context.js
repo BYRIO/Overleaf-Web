@@ -1,6 +1,7 @@
-import React, { createContext, useContext } from 'react'
+import { createContext, useContext, useCallback, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import useScopeValue from './util/scope-value-hook'
+import { useIdeContext } from './ide-context'
 
 export const LayoutContext = createContext()
 
@@ -18,42 +19,64 @@ LayoutContext.Provider.propTypes = {
   }).isRequired,
 }
 
-export function LayoutProvider({ children, $scope }) {
-  const [view, setView] = useScopeValue('ui.view', $scope)
-  const [chatIsOpen, setChatIsOpen] = useScopeValue('ui.chatOpen', $scope)
-  const [reviewPanelOpen, setReviewPanelOpen] = useScopeValue(
-    'ui.reviewPanelOpen',
-    $scope
-  )
-  const [leftMenuShown, setLeftMenuShown] = useScopeValue(
-    'ui.leftMenuShown',
-    $scope
+export function LayoutProvider({ children }) {
+  const { $scope } = useIdeContext()
+
+  const [view, _setView] = useScopeValue('ui.view')
+
+  const setView = useCallback(
+    value => {
+      _setView(oldValue => {
+        // ensure that the "history:toggle" event is broadcast when switching in or out of history view
+        if (value === 'history' || oldValue === 'history') {
+          $scope.toggleHistory()
+        }
+
+        return value
+      })
+    },
+    [$scope, _setView]
   )
 
+  const [chatIsOpen, setChatIsOpen] = useScopeValue('ui.chatOpen')
+  const [reviewPanelOpen, setReviewPanelOpen] = useScopeValue(
+    'ui.reviewPanelOpen'
+  )
+  const [leftMenuShown, setLeftMenuShown] = useScopeValue('ui.leftMenuShown')
   const [pdfLayout] = useScopeValue('ui.pdfLayout', $scope)
 
-  const layoutContextValue = {
-    view,
-    setView,
-    chatIsOpen,
-    setChatIsOpen,
-    reviewPanelOpen,
-    setReviewPanelOpen,
-    leftMenuShown,
-    setLeftMenuShown,
-    pdfLayout,
-  }
+  const value = useMemo(
+    () => ({
+      view,
+      setView,
+      chatIsOpen,
+      setChatIsOpen,
+      reviewPanelOpen,
+      setReviewPanelOpen,
+      leftMenuShown,
+      setLeftMenuShown,
+      pdfLayout,
+    }),
+    [
+      chatIsOpen,
+      leftMenuShown,
+      pdfLayout,
+      reviewPanelOpen,
+      setChatIsOpen,
+      setLeftMenuShown,
+      setReviewPanelOpen,
+      setView,
+      view,
+    ]
+  )
 
   return (
-    <LayoutContext.Provider value={layoutContextValue}>
-      {children}
-    </LayoutContext.Provider>
+    <LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>
   )
 }
 
 LayoutProvider.propTypes = {
   children: PropTypes.any,
-  $scope: PropTypes.any.isRequired,
 }
 
 export function useLayoutContext(propTypes) {

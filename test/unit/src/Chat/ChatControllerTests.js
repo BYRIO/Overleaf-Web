@@ -28,16 +28,15 @@ describe('ChatController', function () {
     this.settings = {}
     this.ChatApiHandler = {}
     this.EditorRealTimeController = { emitToRoom: sinon.stub() }
-    this.AuthenticationController = {
+    this.SessionManager = {
       getLoggedInUserId: sinon.stub().returns(this.user_id),
     }
     this.ChatController = SandboxedModule.require(modulePath, {
       requires: {
-        'settings-sharelatex': this.settings,
+        '@overleaf/settings': this.settings,
         './ChatApiHandler': this.ChatApiHandler,
         '../Editor/EditorRealTimeController': this.EditorRealTimeController,
-        '../Authentication/AuthenticationController': this
-          .AuthenticationController,
+        '../Authentication/SessionManager': this.SessionManager,
         '../User/UserInfoManager': (this.UserInfoManager = {}),
         '../User/UserInfoController': (this.UserInfoController = {}),
       },

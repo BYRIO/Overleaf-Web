@@ -13,16 +13,10 @@ block append meta
 	meta(name="ol-userHasNoSubscription" data-type="boolean" content=!!(settings.enableSubscriptions && !hasSubscription))
 	meta(name="ol-allInReconfirmNotificationPeriods" data-type="json" content=allInReconfirmNotificationPeriods)
 	meta(name="ol-reconfirmedViaSAML" content=reconfirmedViaSAML)
-	meta(name="ol-algolia" data-type="json" content={
-			institutions: {
-				app_id:  algolia_app_id,
-				api_key: algolia_api_key
-			}
-		})
 
 block content
 
-	main.content.content-alt.project-list-page(
+	main.content.content-alt.project-list-page#main-content(
 		ng-controller="ProjectPageController"
 		role="main"
 	)

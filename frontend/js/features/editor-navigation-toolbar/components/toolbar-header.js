@@ -15,7 +15,7 @@ import importOverleafModules from '../../../../macros/import-overleaf-module.mac
 const [publishModalModules] = importOverleafModules('publishModal')
 const PublishButton = publishModalModules?.import.default
 
-function ToolbarHeader({
+const ToolbarHeader = React.memo(function ToolbarHeader({
   cobranding,
   onShowLeftMenuClick,
   chatIsOpen,
@@ -28,18 +28,24 @@ function ToolbarHeader({
   onlineUsers,
   goToUser,
   isRestrictedTokenMember,
+  hasPublishPermissions,
   projectName,
   renameProject,
+  hasRenamePermissions,
   openShareModal,
   pdfViewIsOpen,
   pdfButtonIsVisible,
   togglePdfView,
 }) {
+  const shouldDisplayPublishButton = hasPublishPermissions && PublishButton
+
   return (
     <header className="toolbar toolbar-header toolbar-with-labels">
       <div className="toolbar-left">
         <MenuButton onClick={onShowLeftMenuClick} />
-        {cobranding ? <CobrandingLogo {...cobranding} /> : null}
+        {cobranding && cobranding.logoImgUrl && (
+          <CobrandingLogo {...cobranding} />
+        )}
         <BackToProjectsButton />
       </div>
       {pdfButtonIsVisible && (
@@ -51,7 +57,7 @@ function ToolbarHeader({
       <ProjectNameEditableLabel
         className="toolbar-center"
         projectName={projectName}
-        userIsAdmin
+        hasRenamePermissions={hasRenamePermissions}
         onChange={renameProject}
       />
 
@@ -66,7 +72,9 @@ function ToolbarHeader({
           />
         )}
         <ShareProjectButton onClick={openShareModal} />
-        {PublishButton && <PublishButton cobranding={cobranding} />}
+        {shouldDisplayPublishButton && (
+          <PublishButton cobranding={cobranding} />
+        )}
         {!isRestrictedTokenMember && (
           <>
             <HistoryToggleButton
@@ -83,7 +91,7 @@ function ToolbarHeader({
       </div>
     </header>
   )
-}
+})
 
 ToolbarHeader.propTypes = {
   onShowLeftMenuClick: PropTypes.func.isRequired,
@@ -98,8 +106,10 @@ ToolbarHeader.propTypes = {
   onlineUsers: PropTypes.array.isRequired,
   goToUser: PropTypes.func.isRequired,
   isRestrictedTokenMember: PropTypes.bool,
+  hasPublishPermissions: PropTypes.bool,
   projectName: PropTypes.string.isRequired,
   renameProject: PropTypes.func.isRequired,
+  hasRenamePermissions: PropTypes.bool,
   openShareModal: PropTypes.func.isRequired,
   pdfViewIsOpen: PropTypes.bool,
   pdfButtonIsVisible: PropTypes.bool,

@@ -1,10 +1,10 @@
-const Settings = require('settings-sharelatex')
-const AuthenticationController = require('../Authentication/AuthenticationController')
+const Settings = require('@overleaf/settings')
+const SessionManager = require('../Authentication/SessionManager')
 const SystemMessageManager = require('./SystemMessageManager')
 
 const ProjectController = {
   getMessages(req, res, next) {
-    if (!AuthenticationController.isUserLoggedIn(req)) {
+    if (!SessionManager.isUserLoggedIn(req.session)) {
       // gracefully handle requests from anonymous users
       return res.json([])
     }

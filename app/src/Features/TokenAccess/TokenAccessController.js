@@ -1,8 +1,9 @@
 const AuthenticationController = require('../Authentication/AuthenticationController')
+const SessionManager = require('../Authentication/SessionManager')
 const TokenAccessHandler = require('./TokenAccessHandler')
 const Errors = require('../Errors/Errors')
 const logger = require('logger-sharelatex')
-const settings = require('settings-sharelatex')
+const settings = require('@overleaf/settings')
 const OError = require('@overleaf/o-error')
 const { expressify } = require('../../util/promises')
 const AuthorizationManager = require('../Authorization/AuthorizationManager')
@@ -53,6 +54,8 @@ async function _handleV1Project(token, userId) {
       token,
       userId
     )
+    // This should not happen anymore, but it does show
+    // a nice "contact support" message, so it can stay
     if (!docInfo) {
       return { v1Import: { status: 'cannotImport' } }
     }
@@ -211,7 +214,7 @@ async function checkAndGetProjectOrResponseAction(
 
 async function grantTokenAccessReadAndWrite(req, res, next) {
   const { token } = req.params
-  const userId = AuthenticationController.getLoggedInUserId(req)
+  const userId = SessionManager.getLoggedInUserId(req.session)
   if (!TokenAccessHandler.isReadAndWriteToken(token)) {
     return res.sendStatus(400)
   }
@@ -252,7 +255,7 @@ async function grantTokenAccessReadAndWrite(req, res, next) {
 
 async function grantTokenAccessReadOnly(req, res, next) {
   const { token } = req.params
-  const userId = AuthenticationController.getLoggedInUserId(req)
+  const userId = SessionManager.getLoggedInUserId(req.session)
   if (!TokenAccessHandler.isReadOnlyToken(token)) {
     return res.sendStatus(400)
   }

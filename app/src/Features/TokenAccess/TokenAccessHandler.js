@@ -1,9 +1,8 @@
 const { Project } = require('../../models/Project')
 const PublicAccessLevels = require('../Authorization/PublicAccessLevels')
 const PrivilegeLevels = require('../Authorization/PrivilegeLevels')
-const UserGetter = require('../User/UserGetter')
 const { ObjectId } = require('mongodb')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 const logger = require('logger-sharelatex')
 const V1Api = require('../V1/V1Api')
 const crypto = require('crypto')
@@ -279,23 +278,12 @@ const TokenAccessHandler = {
         exported: false,
       })
     }
-    UserGetter.getUser(v2UserId, { overleaf: 1 }, function (err, user) {
+    const v1Url = `/api/v1/sharelatex/docs/${token}/info`
+    V1Api.request({ url: v1Url }, function (err, response, body) {
       if (err != null) {
         return callback(err)
       }
-      const v1UserId = user.overleaf != null ? user.overleaf.id : undefined
-      if (!v1UserId) {
-        return callback(null, null)
-      }
-      V1Api.request(
-        { url: `/api/v1/sharelatex/users/${v1UserId}/docs/${token}/info` },
-        function (err, response, body) {
-          if (err != null) {
-            return callback(err)
-          }
-          callback(null, body)
-        }
-      )
+      callback(null, body)
     })
   },
 }

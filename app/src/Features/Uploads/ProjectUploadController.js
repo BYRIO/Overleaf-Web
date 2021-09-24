@@ -18,8 +18,8 @@ const fs = require('fs')
 const Path = require('path')
 const FileSystemImportManager = require('./FileSystemImportManager')
 const ProjectUploadManager = require('./ProjectUploadManager')
-const AuthenticationController = require('../Authentication/AuthenticationController')
-const Settings = require('settings-sharelatex')
+const SessionManager = require('../Authentication/SessionManager')
+const Settings = require('@overleaf/settings')
 const { InvalidZipFileError } = require('./ArchiveErrors')
 const multer = require('multer')
 
@@ -33,7 +33,7 @@ const upload = multer({
 module.exports = ProjectUploadController = {
   uploadProject(req, res, next) {
     const timer = new metrics.Timer('project-upload')
-    const user_id = AuthenticationController.getLoggedInUserId(req)
+    const user_id = SessionManager.getLoggedInUserId(req.session)
     const { originalname, path } = req.file
     const name = Path.basename(originalname, '.zip')
     return ProjectUploadManager.createProjectFromZipArchive(
@@ -77,9 +77,12 @@ module.exports = ProjectUploadController = {
         { projectId: project_id, fileName: name },
         'bad name when trying to upload file'
       )
-      return res.send({ success: false })
+      return res.status(422).send({
+        success: false,
+        error: 'invalid_filename',
+      })
     }
-    const user_id = AuthenticationController.getLoggedInUserId(req)
+    const user_id = SessionManager.getLoggedInUserId(req.session)
 
     return FileSystemImportManager.addEntity(
       user_id,
@@ -103,17 +106,17 @@ module.exports = ProjectUploadController = {
             'error uploading file'
           )
           if (error.name === 'InvalidNameError') {
-            return res.send({
+            return res.status(422).send({
               success: false,
-              error: req.i18n.translate('invalid_filename'),
+              error: 'invalid_filename',
             })
           } else if (error.message === 'project_has_too_many_files') {
-            return res.send({
+            return res.status(422).send({
               success: false,
-              error: req.i18n.translate('project_has_too_many_files'),
+              error: 'project_has_too_many_files',
             })
           } else {
-            return res.send({ success: false })
+            return res.status(422).send({ success: false })
           }
         } else {
           return res.send({

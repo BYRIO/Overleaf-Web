@@ -15,10 +15,7 @@ const collaberatorRef = ObjectId()
 const projectName = 'project_name_here'
 
 const thirdPartyDataStoreApiUrl = 'http://third-party-json-store.herokuapp.com'
-const httpUsername = 'user'
-const httpPass = 'pass'
 const siteUrl = 'http://www.localhost:3000'
-const httpAuthSiteUrl = `http://${httpUsername}:${httpPass}@www.localhost:3000`
 const filestoreUrl = 'filestore.sharelatex.com'
 const projectArchiverUrl = 'project-archiver.overleaf.com'
 
@@ -38,7 +35,6 @@ describe('TpdsUpdateSender', function () {
     this.request = sinon.stub().resolves()
     this.settings = {
       siteUrl,
-      httpAuthSiteUrl,
       apis: {
         thirdPartyDataStore: { url: thirdPartyDataStoreApiUrl },
         filestore: {
@@ -60,7 +56,7 @@ describe('TpdsUpdateSender', function () {
     this.updateSender = SandboxedModule.require(modulePath, {
       requires: {
         mongodb: { ObjectId },
-        'settings-sharelatex': this.settings,
+        '@overleaf/settings': this.settings,
         'request-promise-native': this.request,
         '../Collaborators/CollaboratorsGetter': this.CollaboratorsGetter,
         '../User/UserGetter.js': this.UserGetter,

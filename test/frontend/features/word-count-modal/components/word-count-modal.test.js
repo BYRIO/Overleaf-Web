@@ -1,4 +1,3 @@
-import React from 'react'
 import { render, screen, cleanup } from '@testing-library/react'
 import WordCountModal from '../../../../../frontend/js/features/word-count-modal/components/word-count-modal'
 import { expect } from 'chai'
@@ -26,12 +25,14 @@ describe('<WordCountModal />', function () {
 
   it('renders a loading message when loading', async function () {
     fetchMock.get('express:/project/:projectId/wordcount', () => {
-      return { status: 200, body: { texcount: {} } }
+      return { status: 200, body: { texcount: { messages: 'This is a test' } } }
     })
 
     render(<WordCountModal {...modalProps} />)
 
     await screen.findByText('Loading…')
+
+    await screen.findByText('This is a test')
   })
 
   it('renders an error message and hides loading message on error', async function () {

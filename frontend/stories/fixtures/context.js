@@ -10,12 +10,14 @@ export function setupContext() {
   if (window._ide) {
     $scope = {
       ...window._ide.$scope,
+      user: window.user,
       project: {},
       $watch: () => {},
       ui: {
         chatOpen: true,
         pdfLayout: 'flat',
       },
+      toggleHistory: () => {},
     }
   }
   window._ide = {

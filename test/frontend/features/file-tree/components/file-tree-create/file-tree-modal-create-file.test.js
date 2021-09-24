@@ -1,5 +1,6 @@
 import { expect } from 'chai'
-import React, { useEffect } from 'react'
+import * as sinon from 'sinon'
+import { useEffect } from 'react'
 import {
   screen,
   render,
@@ -17,7 +18,12 @@ import { useFileTreeActionable } from '../../../../../../frontend/js/features/fi
 import { useFileTreeMutable } from '../../../../../../frontend/js/features/file-tree/contexts/file-tree-mutable'
 
 describe('<FileTreeModalCreateFile/>', function () {
+  beforeEach(function () {
+    window.csrfToken = 'token'
+  })
+
   afterEach(function () {
+    delete window.csrfToken
     fetchMock.restore()
     cleanup()
   })
@@ -253,6 +259,7 @@ describe('<FileTreeModalCreateFile/>', function () {
 
     // click on the button to toggle between source and output files
     const sourceTypeButton = screen.getByRole('button', {
+      // NOTE: When changing the label, update the other tests with this label as well.
       name: 'select from output files',
     })
     await fireEvent.click(sourceTypeButton)
@@ -287,6 +294,48 @@ describe('<FileTreeModalCreateFile/>', function () {
         },
       })
     ).to.be.true
+  })
+
+  describe('when the output files feature is not available', function () {
+    const flagBefore = window.ExposedSettings.hasLinkedProjectOutputFileFeature
+    before(function () {
+      window.ExposedSettings.hasLinkedProjectOutputFileFeature = false
+    })
+    after(function () {
+      window.ExposedSettings.hasLinkedProjectOutputFileFeature = flagBefore
+    })
+
+    it('should not show the import from output file mode', async function () {
+      fetchMock.get('path:/user/projects', {
+        projects: [
+          {
+            _id: 'test-project',
+            name: 'This Project',
+          },
+          {
+            _id: 'project-1',
+            name: 'Project One',
+          },
+          {
+            _id: 'project-2',
+            name: 'Project Two',
+          },
+        ],
+      })
+
+      render(
+        <FileTreeContext {...contextProps}>
+          <OpenWithMode mode="project" />
+        </FileTreeContext>
+      )
+
+      // should not show the toggle
+      expect(
+        screen.queryByRole('button', {
+          name: 'select from output files',
+        })
+      ).to.be.null
+    })
   })
 
   it('import from a URL when the form is submitted', async function () {
@@ -330,9 +379,12 @@ describe('<FileTreeModalCreateFile/>', function () {
     ).to.be.true
   })
 
-  // eslint-disable-next-line mocha/no-skipped-tests
-  it.skip('uploads a new file', async function () {
-    fetchMock.post('express:/project/:projectId/linked_file', () => 204)
+  it('uploads a dropped file', async function () {
+    const xhr = sinon.useFakeXMLHttpRequest()
+    const requests = []
+    xhr.onCreate = request => {
+      requests.push(request)
+    }
 
     render(
       <FileTreeContext {...contextProps}>
@@ -347,14 +399,99 @@ describe('<FileTreeModalCreateFile/>', function () {
 
     expect(dropzone).not.to.be.null
 
-    // https://github.com/jsdom/jsdom/issues/1568 - no paste
     fireEvent.drop(dropzone, {
       dataTransfer: {
         files: [new File(['test'], 'test.tex', { type: 'text/plain' })],
       },
     })
 
-    expect(fetchMock.called('express:/project/:projectId/upload')).to.be.true
+    await waitFor(() => expect(requests).to.have.length(1))
+
+    const [request] = requests
+    expect(request.url).to.equal('/project/test-project/upload')
+    expect(request.method).to.equal('POST')
+
+    xhr.restore()
+  })
+
+  it('uploads a pasted file', async function () {
+    const xhr = sinon.useFakeXMLHttpRequest()
+    const requests = []
+    xhr.onCreate = request => {
+      requests.push(request)
+    }
+
+    render(
+      <FileTreeContext {...contextProps}>
+        <OpenWithMode mode="upload" />
+      </FileTreeContext>
+    )
+
+    // the submit button should not be present
+    expect(screen.queryByRole('button', { name: 'Create' })).to.be.null
+
+    const dropzone = screen.getByLabelText('File Uploader')
+
+    expect(dropzone).not.to.be.null
+
+    fireEvent.paste(dropzone, {
+      clipboardData: {
+        files: [new File(['test'], 'test.tex', { type: 'text/plain' })],
+      },
+    })
+
+    await waitFor(() => expect(requests).to.have.length(1))
+
+    const [request] = requests
+    expect(request.url).to.equal('/project/test-project/upload')
+    expect(request.method).to.equal('POST')
+
+    xhr.restore()
+  })
+
+  it('displays upload errors', async function () {
+    const xhr = sinon.useFakeXMLHttpRequest()
+    const requests = []
+    xhr.onCreate = request => {
+      requests.push(request)
+    }
+
+    render(
+      <FileTreeContext {...contextProps}>
+        <OpenWithMode mode="upload" />
+      </FileTreeContext>
+    )
+
+    // the submit button should not be present
+    expect(screen.queryByRole('button', { name: 'Create' })).to.be.null
+
+    const dropzone = screen.getByLabelText('File Uploader')
+
+    expect(dropzone).not.to.be.null
+
+    fireEvent.paste(dropzone, {
+      clipboardData: {
+        files: [new File(['test'], 'tes!t.tex', { type: 'text/plain' })],
+      },
+    })
+
+    await waitFor(() => expect(requests).to.have.length(1))
+
+    const [request] = requests
+    expect(request.url).to.equal('/project/test-project/upload')
+    expect(request.method).to.equal('POST')
+
+    request.respond(
+      422,
+      { 'Content-Type': 'application/json' },
+      '{ "success": false, "error": "invalid_filename" }'
+    )
+
+    await screen.findByText(
+      `Upload failed: check that the file name doesn't contain special characters, trailing/leading whitespace or more than 150 characters`
+    )
+
+    xhr.restore()
   })
 })
 

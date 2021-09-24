@@ -1,13 +1,15 @@
 // Disable prop type checks for test harnesses
 /* eslint-disable react/prop-types */
 
-import React from 'react'
 import { render } from '@testing-library/react'
 import sinon from 'sinon'
-import { ApplicationProvider } from '../../../frontend/js/shared/context/application-context'
+import { UserProvider } from '../../../frontend/js/shared/context/user-context'
 import { EditorProvider } from '../../../frontend/js/shared/context/editor-context'
 import { LayoutProvider } from '../../../frontend/js/shared/context/layout-context'
 import { ChatProvider } from '../../../frontend/js/features/chat/context/chat-context'
+import { IdeProvider } from '../../../frontend/js/shared/context/ide-context'
+import { get } from 'lodash'
+import { ProjectProvider } from '../../../frontend/js/shared/context/project-context'
 
 export function EditorProviders({
   user = { id: '123abd' },
@@ -16,38 +18,59 @@ export function EditorProviders({
     on: sinon.stub(),
     removeListener: sinon.stub(),
   },
+  isRestrictedTokenMember = false,
+  scope,
   children,
 }) {
   window.user = user || window.user
   window.gitBridgePublicBaseUrl = 'git.overleaf.test'
   window.project_id = projectId != null ? projectId : window.project_id
+  window.isRestrictedTokenMember = isRestrictedTokenMember
 
-  window._ide = {
-    $scope: {
-      project: {
-        owner: {
-          _id: '124abd',
-        },
+  const $scope = {
+    user: window.user,
+    project: {
+      _id: window.project_id,
+      name: 'project-name',
+      owner: {
+        _id: '124abd',
+        email: 'owner@example.com',
       },
-      ui: {
-        chatOpen: true,
-        pdfLayout: 'flat',
-      },
-      $watch: () => {},
     },
-    socket,
+    ui: {
+      chatOpen: true,
+      pdfLayout: 'flat',
+    },
+    $watch: (path, callback) => {
+      callback(get($scope, path))
+      return () => null
+    },
+    $applyAsync: () => {},
+    toggleHistory: () => {},
+    ...scope,
   }
+
+  window._ide = { $scope, socket }
+
   return (
-    <ApplicationProvider>
-      <EditorProvider ide={window._ide} settings={{}}>
-        <LayoutProvider $scope={window._ide.$scope}>{children}</LayoutProvider>
-      </EditorProvider>
-    </ApplicationProvider>
+    <IdeProvider ide={window._ide}>
+      <UserProvider>
+        <ProjectProvider>
+          <EditorProvider settings={{}}>
+            <LayoutProvider>{children}</LayoutProvider>
+          </EditorProvider>
+        </ProjectProvider>
+      </UserProvider>
+    </IdeProvider>
   )
 }
 
-export function renderWithEditorContext(children, props) {
-  return render(<EditorProviders {...props}>{children}</EditorProviders>)
+export function renderWithEditorContext(component, contextProps) {
+  const EditorProvidersWrapper = ({ children }) => (
+    <EditorProviders {...contextProps}>{children}</EditorProviders>
+  )
+
+  return render(component, { wrapper: EditorProvidersWrapper })
 }
 
 export function ChatProviders({ children, ...props }) {
@@ -58,8 +81,12 @@ export function ChatProviders({ children, ...props }) {
   )
 }
 
-export function renderWithChatContext(children, props) {
-  return render(<ChatProviders {...props}>{children}</ChatProviders>)
+export function renderWithChatContext(component, props) {
+  const ChatProvidersWrapper = ({ children }) => (
+    <ChatProviders {...props}>{children}</ChatProviders>
+  )
+
+  return render(component, { wrapper: ChatProvidersWrapper })
 }
 
 export function cleanUpContext() {

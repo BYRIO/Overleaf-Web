@@ -1,9 +1,9 @@
 const request = require('request')
-const settings = require('settings-sharelatex')
+const settings = require('@overleaf/settings')
 const _ = require('underscore')
 const logger = require('logger-sharelatex')
 const URL = require('url')
-const { promisify } = require('../util/promises')
+const { promisify, promisifyMultiResult } = require('../util/promises')
 
 const currencyMappings = {
   GB: 'GBP',
@@ -49,9 +49,8 @@ const EuroCountries = [
 _.each(EuroCountries, country => (currencyMappings[country] = 'EUR'))
 
 function getDetails(ip, callback) {
-  if (ip == null) {
-    const e = new Error('no ip passed')
-    return callback(e)
+  if (!ip) {
+    return callback(new Error('no ip passed'))
   }
   ip = ip.trim().split(' ')[0]
   const opts = {
@@ -78,12 +77,12 @@ function getCurrencyCode(ip, callback) {
       return callback(null, 'USD')
     }
     const countryCode =
-      ipDetails && ipDetails.countryCode
-        ? ipDetails.countryCode.toUpperCase()
+      ipDetails && ipDetails.country_code
+        ? ipDetails.country_code.toUpperCase()
         : undefined
     const currencyCode = currencyMappings[countryCode] || 'USD'
     logger.log({ ip, currencyCode, ipDetails }, 'got currencyCode for ip')
-    return callback(err, currencyCode, countryCode)
+    callback(err, currencyCode, countryCode)
   })
 }
 
@@ -92,6 +91,9 @@ module.exports = {
   getCurrencyCode,
   promises: {
     getDetails: promisify(getDetails),
-    getCurrencyCode: promisify(getCurrencyCode),
+    getCurrencyCode: promisifyMultiResult(getCurrencyCode, [
+      'currencyCode',
+      'countryCode',
+    ]),
   },
 }

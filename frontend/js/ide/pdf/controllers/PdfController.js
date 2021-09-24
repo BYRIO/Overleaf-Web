@@ -6,7 +6,6 @@ import { react2angular } from 'react2angular'
 import { rootContext } from '../../../shared/context/root-context'
 import 'ace/ace'
 import getMeta from '../../../utils/meta'
-import { waitForServiceWorker } from '../../pdfng/directives/serviceWorkerManager'
 import { trackPdfDownload } from './PdfJsMetrics'
 
 const AUTO_COMPILE_MAX_WAIT = 5000
@@ -277,13 +276,11 @@ App.controller(
         options = {}
       }
       const url = `/project/${$scope.project_id}/compile`
-      let setup = Promise.resolve()
       const params = {}
       if (options.isAutoCompileOnLoad || options.isAutoCompileOnChange) {
         params.auto_compile = true
       }
       if (getMeta('ol-enablePdfCaching')) {
-        setup = waitForServiceWorker()
         params.enable_pdf_caching = true
       }
       // if the previous run was a check, clear the error logs
@@ -314,20 +311,18 @@ App.controller(
         checkType = 'silent'
       }
 
-      return setup.then(() =>
-        $http.post(
-          url,
-          {
-            rootDoc_id: options.rootDocOverride_id || null,
-            draft: $scope.draft,
-            check: checkType,
-            // use incremental compile for all users but revert to a full
-            // compile if there is a server error
-            incrementalCompilesEnabled: !$scope.pdf.error,
-            _csrf: window.csrfToken,
-          },
-          { params }
-        )
+      return $http.post(
+        url,
+        {
+          rootDoc_id: options.rootDocOverride_id || null,
+          draft: $scope.draft,
+          check: checkType,
+          // use incremental compile for all users but revert to a full
+          // compile if there is a server error
+          incrementalCompilesEnabled: !$scope.pdf.error,
+          _csrf: window.csrfToken,
+        },
+        { params }
       )
     }
 
@@ -341,7 +336,7 @@ App.controller(
 
     function noop() {}
 
-    function parseCompileResponse(response) {
+    function parseCompileResponse(response, compileTimeClientE2E) {
       // keep last url
       const lastPdfUrl = $scope.pdf.url
       const { pdfDownloadDomain } = response
@@ -353,6 +348,7 @@ App.controller(
       $scope.pdf.updateConsumedBandwidth = noop
       $scope.pdf.firstRenderDone = noop
       $scope.pdf.clsiMaintenance = false
+      $scope.pdf.clsiUnavailable = false
       $scope.pdf.tooRecentlyCompiled = false
       $scope.pdf.renderingError = false
       $scope.pdf.projectTooLarge = false
@@ -361,9 +357,7 @@ App.controller(
       $scope.pdf.failedCheck = false
       $scope.pdf.compileInProgress = false
       $scope.pdf.autoCompileDisabled = false
-      if (window.showNewLogsUI) {
-        $scope.clsiErrors = {}
-      }
+      $scope.pdf.compileFailed = false
 
       // make a cache to look up files by name
       const fileByPath = {}
@@ -413,7 +407,8 @@ App.controller(
 
         if (getMeta('ol-trackPdfDownload')) {
           const { firstRenderDone, updateConsumedBandwidth } = trackPdfDownload(
-            response
+            response,
+            compileTimeClientE2E
           )
           $scope.pdf.firstRenderDone = firstRenderDone
           $scope.pdf.updateConsumedBandwidth = updateConsumedBandwidth
@@ -440,6 +435,7 @@ App.controller(
             'editor-click-feature',
             'compile-timeout'
           )
+          eventTracking.sendMB('compile-timeout-paywall-prompt')
         }
       } else if (response.status === 'terminated') {
         $scope.pdf.view = 'errors'
@@ -481,6 +477,7 @@ App.controller(
       } else if (response.status === 'failure') {
         $scope.pdf.view = 'errors'
         $scope.pdf.failure = true
+        $scope.pdf.downloadUrl = null
         $scope.shouldShowLogs = true
         fetchLogs(fileByPath, { pdfDownloadDomain })
       } else if (response.status === 'clsi-maintenance') {
@@ -503,33 +500,6 @@ App.controller(
         // fall back to displaying an error
         $scope.pdf.view = 'errors'
         $scope.pdf.error = true
-      }
-
-      if (window.showNewLogsUI) {
-        $scope.pdf.compileFailed = false
-        // `$scope.clsiErrors` stores the error states nested within `$scope.pdf`
-        // for use with React's <PreviewPane errors={$scope.clsiErrors}/>
-        $scope.clsiErrors = Object.assign(
-          {},
-          $scope.pdf.error ? { error: true } : null,
-          $scope.pdf.renderingError ? { renderingError: true } : null,
-          $scope.pdf.clsiMaintenance ? { clsiMaintenance: true } : null,
-          $scope.pdf.clsiUnavailable ? { clsiUnavailable: true } : null,
-          $scope.pdf.tooRecentlyCompiled ? { tooRecentlyCompiled: true } : null,
-          $scope.pdf.compileTerminated ? { compileTerminated: true } : null,
-          $scope.pdf.rateLimited ? { rateLimited: true } : null,
-          $scope.pdf.compileInProgress ? { compileInProgress: true } : null,
-          $scope.pdf.timedout ? { timedout: true } : null,
-          $scope.pdf.autoCompileDisabled ? { autoCompileDisabled: true } : null
-        )
-
-        if (
-          $scope.pdf.view === 'errors' ||
-          $scope.pdf.view === 'validation-problems'
-        ) {
-          $scope.shouldShowLogs = true
-          $scope.pdf.compileFailed = true
-        }
       }
 
       const IGNORE_FILES = ['output.fls', 'output.fdb_latexmk']
@@ -563,6 +533,23 @@ App.controller(
       // sort the output files into order, main files first, then others
       $scope.pdf.outputFiles.sort(
         (a, b) => b.main - a.main || a.name.localeCompare(b.name)
+      )
+    }
+
+    // In the existing compile UI, errors and validation problems are shown in the PDF pane, whereas in the new
+    // one they're shown in the logs pane. This `$watch`er makes sure we change the view in the new logs UI.
+    // This should be removed once we stop supporting the two different log UIs.
+    if (window.showNewLogsUI) {
+      $scope.$watch(
+        () =>
+          $scope.pdf.view === 'errors' ||
+          $scope.pdf.view === 'validation-problems',
+        newVal => {
+          if (newVal) {
+            $scope.shouldShowLogs = true
+            $scope.pdf.compileFailed = true
+          }
+        }
       )
     }
 
@@ -745,11 +732,7 @@ App.controller(
           newLogsUI: window.showNewLogsUI,
           subvariant: window.showNewLogsUI ? window.logsUISubvariant : null,
         }
-        eventTracking.sendMBSampled(
-          'compile-result',
-          JSON.stringify(metadata),
-          0.01
-        )
+        eventTracking.sendMBSampled('compile-result', metadata, 0.01)
       }
     }
 
@@ -817,12 +800,14 @@ App.controller(
 
       options.rootDocOverride_id = getRootDocOverrideId()
 
+      const t0 = performance.now()
       sendCompileRequest(options)
         .then(function (response) {
           const { data } = response
+          const compileTimeClientE2E = performance.now() - t0
           $scope.pdf.view = 'pdf'
           $scope.pdf.compiling = false
-          parseCompileResponse(data)
+          parseCompileResponse(data, compileTimeClientE2E)
         })
         .catch(function (response) {
           const { status } = response
@@ -833,11 +818,6 @@ App.controller(
           $scope.pdf.renderingError = false
           $scope.pdf.error = true
           $scope.pdf.view = 'errors'
-          if (window.showNewLogsUI) {
-            $scope.clsiErrors = { error: true }
-            $scope.shouldShowLogs = true
-            $scope.pdf.compileFailed = true
-          }
         })
         .finally(() => {
           $scope.lastFinishedCompileAt = Date.now()

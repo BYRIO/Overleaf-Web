@@ -3,7 +3,13 @@ require('@babel/register')
 
 // Load JSDOM to mock the DOM in Node
 // Set pretendToBeVisual to enable requestAnimationFrame
-require('jsdom-global')(undefined, { pretendToBeVisual: true })
+require('jsdom-global')(undefined, {
+  pretendToBeVisual: true,
+  url: 'https://www.test-overleaf.com/',
+})
+
+// workaround for "keys.js in jsdom-global doesn't include AbortController"
+global.AbortController = window.AbortController
 
 const path = require('path')
 process.env.SHARELATEX_CONFIG = path.resolve(
@@ -23,6 +29,9 @@ window.ExposedSettings = {
   maxEntitiesPerProject: 10,
   maxUploadSize: 5 * 1024 * 1024,
   siteUrl: 'https://www.dev-overleaf.com',
+  hasLinkUrlFeature: true,
+  hasLinkedProjectFileFeature: true,
+  hasLinkedProjectOutputFileFeature: true,
   textExtensions: [
     'tex',
     'latex',
@@ -88,7 +97,8 @@ Object.defineProperty(global, 'localStorage', {
 
 // node-fetch doesn't accept relative URL's: https://github.com/node-fetch/node-fetch/blob/master/docs/v2-LIMITS.md#known-differences
 const fetch = require('node-fetch')
-global.fetch = (url, ...options) => fetch('http://localhost' + url, ...options)
+global.fetch = window.fetch = (url, ...options) =>
+  fetch(new URL(url, 'http://localhost'), ...options)
 
 // ignore CSS files
 const { addHook } = require('pirates')

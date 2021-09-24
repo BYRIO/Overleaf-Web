@@ -1,4 +1,4 @@
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 const Metrics = require('../../infrastructure/Metrics')
 const Queues = require('../../infrastructure/Queues')
 
@@ -7,6 +7,9 @@ const analyticsEditingSessionsQueue = Queues.getAnalyticsEditingSessionsQueue()
 const analyticsUserPropertiesQueue = Queues.getAnalyticsUserPropertiesQueue()
 
 function identifyUser(userId, oldUserId) {
+  if (!userId || !oldUserId) {
+    return
+  }
   if (isAnalyticsDisabled() || isSmokeTestUser(userId)) {
     return
   }
@@ -22,6 +25,9 @@ function identifyUser(userId, oldUserId) {
 }
 
 function recordEvent(userId, event, segmentation) {
+  if (!userId) {
+    return
+  }
   if (isAnalyticsDisabled() || isSmokeTestUser(userId)) {
     return
   }
@@ -37,6 +43,9 @@ function recordEvent(userId, event, segmentation) {
 }
 
 function updateEditingSession(userId, projectId, countryCode) {
+  if (!userId) {
+    return
+  }
   if (isAnalyticsDisabled() || isSmokeTestUser(userId)) {
     return
   }
@@ -61,9 +70,19 @@ function updateEditingSession(userId, projectId, countryCode) {
 }
 
 function setUserProperty(userId, propertyName, propertyValue) {
+  if (!userId) {
+    return
+  }
   if (isAnalyticsDisabled() || isSmokeTestUser(userId)) {
     return
   }
+
+  if (propertyValue === undefined) {
+    throw new Error(
+      'propertyValue cannot be undefined, use null to unset a property'
+    )
+  }
+
   Metrics.analyticsQueue.inc({
     status: 'adding',
     event_type: 'user-property',

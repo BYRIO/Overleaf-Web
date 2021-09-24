@@ -1,9 +1,9 @@
-import React from 'react'
 import PropTypes from 'prop-types'
 import { Dropdown, OverlayTrigger, Tooltip } from 'react-bootstrap'
 import { useTranslation } from 'react-i18next'
 import PreviewDownloadFileList from './preview-download-file-list'
 import Icon from '../../../shared/components/icon'
+import ControlledDropdown from '../../../shared/components/controlled-dropdown'
 
 function PreviewDownloadButton({
   isCompiling,
@@ -40,7 +40,7 @@ function PreviewDownloadButton({
   const hideTooltip = showText && pdfDownloadUrl
 
   return (
-    <Dropdown
+    <ControlledDropdown
       id="download-dropdown"
       className="toolbar-item"
       disabled={isCompiling}
@@ -69,7 +69,7 @@ function PreviewDownloadButton({
       <Dropdown.Menu id="download-dropdown-list">
         <PreviewDownloadFileList fileList={outputFiles} />
       </Dropdown.Menu>
-    </Dropdown>
+    </ControlledDropdown>
   )
 }
 

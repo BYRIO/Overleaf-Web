@@ -13,7 +13,7 @@ const SubscriptionController = require('./SubscriptionController')
 const SubscriptionGroupController = require('./SubscriptionGroupController')
 const TeamInvitesController = require('./TeamInvitesController')
 const RateLimiterMiddleware = require('../Security/RateLimiterMiddleware')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 
 module.exports = {
   apply(webRouter, privateApiRouter, publicApiRouter) {
@@ -73,6 +73,9 @@ module.exports = {
     // recurly callback
     publicApiRouter.post(
       '/user/subscription/callback',
+      AuthenticationController.requireBasicAuth({
+        [Settings.apis.recurly.webhookUser]: Settings.apis.recurly.webhookPass,
+      }),
       SubscriptionController.recurlyNotificationParser,
       SubscriptionController.recurlyCallback
     )
@@ -136,7 +139,7 @@ module.exports = {
     // Currently used in acceptance tests only, as a way to trigger the syncing logic
     return publicApiRouter.post(
       '/user/:user_id/features/sync',
-      AuthenticationController.httpAuth,
+      AuthenticationController.requirePrivateApiAuth(),
       SubscriptionController.refreshUserFeatures
     )
   },

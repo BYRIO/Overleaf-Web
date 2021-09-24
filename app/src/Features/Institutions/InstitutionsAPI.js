@@ -1,7 +1,7 @@
 const OError = require('@overleaf/o-error')
 const logger = require('logger-sharelatex')
 const metrics = require('@overleaf/metrics')
-const settings = require('settings-sharelatex')
+const settings = require('@overleaf/settings')
 const request = require('request')
 const { promisifyAll } = require('../../util/promises')
 const NotificationsBuilder = require('../Notifications/NotificationsBuilder')
@@ -17,6 +17,17 @@ const InstitutionsAPI = {
         method: 'GET',
         path: `/api/v2/institutions/${institutionId.toString()}/affiliations`,
         defaultErrorMessage: "Couldn't get institution affiliations",
+      },
+      (error, body) => callback(error, body || [])
+    )
+  },
+
+  getInstitutionAffiliationsCounts(institutionId, callback) {
+    makeAffiliationRequest(
+      {
+        method: 'GET',
+        path: `/api/v2/institutions/${institutionId.toString()}/affiliations_counts`,
+        defaultErrorMessage: "Couldn't get institution counts",
       },
       (error, body) => callback(error, body || [])
     )

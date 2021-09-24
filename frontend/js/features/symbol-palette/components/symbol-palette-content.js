@@ -1,5 +1,5 @@
 import { Tabs } from '@reach/tabs'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import PropTypes from 'prop-types'
 import { matchSorter } from 'match-sorter'
@@ -34,12 +34,12 @@ export default function SymbolPaletteContent({ handleSelect }) {
       return null
     }
 
-    const words = input.trim().split(/\W+/)
+    const words = input.trim().split(/\s+/)
 
     return words.reduceRight(
       (symbols, word) =>
         matchSorter(symbols, word, {
-          keys: ['command', 'description'],
+          keys: ['command', 'description', 'character', 'aliases'],
           threshold: matchSorter.rankings.CONTAINS,
         }),
       symbols
@@ -66,19 +66,22 @@ export default function SymbolPaletteContent({ handleSelect }) {
     <Tabs className="symbol-palette-container">
       <div className="symbol-palette">
         <div className="symbol-palette-header">
-          <SymbolPaletteTabs
-            categories={categories}
-            disabled={input.length > 0}
-          />
+          {input.length <= 0 ? (
+            <SymbolPaletteTabs categories={categories} />
+          ) : (
+            <div className="symbol-palette-search-hint">
+              {t('showing_symbol_search_results', { search: input })}
+            </div>
+          )}
           <div className="symbol-palette-header-group">
             <BetaBadge
               tooltip={{
                 id: 'tooltip-symbol-palette-beta',
-                text: t('beta_badge_tooltip', {
-                  feature: 'entering symbols',
-                }),
+                text:
+                  'The Symbol Palette is a beta feature. Click here to give feedback.',
                 placement: 'top',
               }}
+              url="https://forms.gle/BybHV5svGE8rJ6Ki9"
             />
             {/* NOTE: replace the beta badge with this info link when rolling out to all users */}
             {/* <SymbolPaletteInfoLink /> */}

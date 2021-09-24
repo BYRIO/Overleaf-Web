@@ -1,6 +1,6 @@
 import { Trans } from 'react-i18next'
 import { Alert, Button } from 'react-bootstrap'
-import React, { useCallback, useState } from 'react'
+import { useCallback, useState } from 'react'
 import PropTypes from 'prop-types'
 import Uppy from '@uppy/core'
 import XHRUpload from '@uppy/xhr-upload'
@@ -105,7 +105,7 @@ export default function FileTreeUploadDoc() {
               break
 
             default:
-              // TODO
+              setError(response.body.error)
               break
           }
         })

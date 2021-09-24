@@ -3,7 +3,7 @@ const Path = require('path')
 const pug = require('pug')
 const async = require('async')
 const { promisify } = require('util')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 
 const MODULE_BASE_PATH = Path.resolve(__dirname + '/../../../modules')
 
@@ -12,16 +12,23 @@ const _hooks = {}
 let _viewIncludes = {}
 
 function loadModules() {
-  for (const moduleName of fs.readdirSync(MODULE_BASE_PATH)) {
-    if (fs.existsSync(Path.join(MODULE_BASE_PATH, moduleName, 'index.js'))) {
-      const loadedModule = require(Path.join(
-        MODULE_BASE_PATH,
-        moduleName,
-        'index'
-      ))
-      loadedModule.name = moduleName
-      _modules.push(loadedModule)
-    }
+  const settingsCheckModule = Path.join(
+    MODULE_BASE_PATH,
+    'settings-check',
+    'index.js'
+  )
+  if (fs.existsSync(settingsCheckModule)) {
+    require(settingsCheckModule)
+  }
+
+  for (const moduleName of Settings.moduleImportSequence) {
+    const loadedModule = require(Path.join(
+      MODULE_BASE_PATH,
+      moduleName,
+      'index.js'
+    ))
+    loadedModule.name = moduleName
+    _modules.push(loadedModule)
   }
   attachHooks()
 }

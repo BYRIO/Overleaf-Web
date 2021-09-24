@@ -7,9 +7,9 @@ import OutlineRoot from './outline-root'
 import Icon from '../../../shared/components/icon'
 import localStorage from '../../../infrastructure/local-storage'
 import withErrorBoundary from '../../../infrastructure/error-boundary'
-import { useEditorContext } from '../../../shared/context/editor-context'
+import { useProjectContext } from '../../../shared/context/project-context'
 
-function OutlinePane({
+const OutlinePane = React.memo(function OutlinePane({
   isTexFile,
   outline,
   jumpToLine,
@@ -19,8 +19,8 @@ function OutlinePane({
 }) {
   const { t } = useTranslation()
 
-  const { projectId } = useEditorContext({
-    projectId: PropTypes.string.isRequired,
+  const { _id: projectId } = useProjectContext({
+    _id: PropTypes.string.isRequired,
   })
 
   const storageKey = `file_outline.expanded.${projectId}`
@@ -73,7 +73,7 @@ function OutlinePane({
       ) : null}
     </div>
   )
-}
+})
 
 OutlinePane.propTypes = {
   isTexFile: PropTypes.bool.isRequired,

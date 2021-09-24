@@ -1,8 +1,8 @@
 /* eslint-disable
     max-len,
     no-return-assign,
-    no-undef,
 */
+/* global inject, sinon */
 // TODO: This file was created by bulk-decaffeinate.
 // Fix any style issues and re-enable lint.
 /*
@@ -157,11 +157,15 @@ export default describe('HistoryV2Manager', function () {
         $http: $http,
         $filter: $filter,
       }
+      this.eventTracking = {
+        sendMB: () => {},
+      }
       this.localStorage = sinon.stub().returns(null)
       this.historyManager = new HistoryV2Manager(
         this.ide,
         this.$scope,
-        this.localStorage
+        this.localStorage,
+        this.eventTracking
       )
       done()
     })

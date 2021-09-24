@@ -76,7 +76,7 @@ describe('ProjectController', function () {
       isArchivedOrTrashed: sinon.stub(),
       getAllowedImagesForUser: sinon.stub().returns([]),
     }
-    this.AuthenticationController = {
+    this.SessionManager = {
       getLoggedInUser: sinon.stub().callsArgWith(1, null, this.user),
       getLoggedInUserId: sinon.stub().returns(this.user._id),
       getSessionUser: sinon.stub().returns(this.user),
@@ -125,13 +125,16 @@ describe('ProjectController', function () {
         .returns({ newLogsUI: false, subvariant: null }),
     }
     this.SplitTestHandler = {
-      getTestSegmentation: sinon.stub().returns({ enabled: false }),
+      promises: {
+        getTestSegmentation: sinon.stub().resolves({ enabled: false }),
+      },
+      getTestSegmentation: sinon.stub().yields(null, { enabled: false }),
     }
 
     this.ProjectController = SandboxedModule.require(MODULE_PATH, {
       requires: {
         mongodb: { ObjectId },
-        'settings-sharelatex': this.settings,
+        '@overleaf/settings': this.settings,
         '@overleaf/metrics': this.Metrics,
         '../SplitTests/SplitTestHandler': this.SplitTestHandler,
         './ProjectDeleter': this.ProjectDeleter,
@@ -150,8 +153,7 @@ describe('ProjectController', function () {
         './ProjectUpdateHandler': this.ProjectUpdateHandler,
         './ProjectGetter': this.ProjectGetter,
         './ProjectDetailsHandler': this.ProjectDetailsHandler,
-        '../Authentication/AuthenticationController': this
-          .AuthenticationController,
+        '../Authentication/SessionManager': this.SessionManager,
         '../TokenAccess/TokenAccessHandler': this.TokenAccessHandler,
         '../Collaborators/CollaboratorsGetter': this.CollaboratorsGetter,
         './ProjectEntityHandler': this.ProjectEntityHandler,
@@ -172,6 +174,7 @@ describe('ProjectController', function () {
 
     this.projectName = '£12321jkj9ujkljds'
     this.req = {
+      query: {},
       params: {
         Project_id: this.project_id,
       },
@@ -1071,6 +1074,210 @@ describe('ProjectController', function () {
       this.ProjectController.loadEditor(this.req, this.res)
     })
 
+    describe('pdf caching feature flags', function () {
+      /* eslint-disable mocha/no-identical-title */
+      function showNoVariant() {
+        beforeEach(function () {
+          this.SplitTestHandler.getTestSegmentation = sinon
+            .stub()
+            .yields(null, { enabled: false })
+        })
+      }
+      function showVariant(variant) {
+        beforeEach(function () {
+          this.SplitTestHandler.getTestSegmentation = sinon
+            .stub()
+            .yields(null, { enabled: true, variant })
+        })
+      }
+      function expectBandwidthTrackingEnabled() {
+        it('should track pdf bandwidth', function (done) {
+          this.res.render = (pageName, opts) => {
+            expect(opts.trackPdfDownload).to.equal(true)
+            done()
+          }
+          this.ProjectController.loadEditor(this.req, this.res)
+        })
+      }
+      function expectPDFCachingEnabled() {
+        it('should enable pdf caching', function (done) {
+          this.res.render = (pageName, opts) => {
+            expect(opts.enablePdfCaching).to.equal(true)
+            done()
+          }
+          this.ProjectController.loadEditor(this.req, this.res)
+        })
+      }
+      function expectBandwidthTrackingDisabled() {
+        it('should not track pdf bandwidth', function (done) {
+          this.res.render = (pageName, opts) => {
+            expect(opts.trackPdfDownload).to.equal(false)
+            done()
+          }
+          this.ProjectController.loadEditor(this.req, this.res)
+        })
+      }
+      function expectPDFCachingDisabled() {
+        it('should disable pdf caching', function (done) {
+          this.res.render = (pageName, opts) => {
+            expect(opts.enablePdfCaching).to.equal(false)
+            done()
+          }
+          this.ProjectController.loadEditor(this.req, this.res)
+        })
+      }
+      function expectToCollectMetricsAndCachePDF() {
+        describe('with no query', function () {
+          expectBandwidthTrackingEnabled()
+          expectPDFCachingEnabled()
+        })
+
+        describe('with enable_pdf_caching=false', function () {
+          beforeEach(function () {
+            this.req.query.enable_pdf_caching = 'false'
+          })
+          expectBandwidthTrackingDisabled()
+          expectPDFCachingDisabled()
+        })
+
+        describe('with enable_pdf_caching=true', function () {
+          beforeEach(function () {
+            this.req.query.enable_pdf_caching = 'true'
+          })
+          expectBandwidthTrackingEnabled()
+          expectPDFCachingEnabled()
+        })
+      }
+      function expectToCollectMetricsOnly() {
+        describe('with no query', function () {
+          expectBandwidthTrackingEnabled()
+          expectPDFCachingDisabled()
+        })
+
+        describe('with enable_pdf_caching=false', function () {
+          beforeEach(function () {
+            this.req.query.enable_pdf_caching = 'false'
+          })
+          expectBandwidthTrackingDisabled()
+          expectPDFCachingDisabled()
+        })
+
+        describe('with enable_pdf_caching=true', function () {
+          beforeEach(function () {
+            this.req.query.enable_pdf_caching = 'true'
+          })
+          expectBandwidthTrackingEnabled()
+          expectPDFCachingDisabled()
+        })
+      }
+
+      function expectToCachePDFOnly() {
+        describe('with no query', function () {
+          expectBandwidthTrackingDisabled()
+          expectPDFCachingEnabled()
+        })
+
+        describe('with enable_pdf_caching=false', function () {
+          beforeEach(function () {
+            this.req.query.enable_pdf_caching = 'false'
+          })
+          expectBandwidthTrackingDisabled()
+          expectPDFCachingDisabled()
+        })
+
+        describe('with enable_pdf_caching=true', function () {
+          beforeEach(function () {
+            this.req.query.enable_pdf_caching = 'true'
+          })
+          expectBandwidthTrackingDisabled()
+          expectPDFCachingEnabled()
+        })
+      }
+
+      function expectToNotBeEnrolledAtAll() {
+        describe('with no query', function () {
+          expectBandwidthTrackingDisabled()
+          expectPDFCachingDisabled()
+        })
+
+        describe('with enable_pdf_caching=false', function () {
+          beforeEach(function () {
+            this.req.query.enable_pdf_caching = 'false'
+          })
+          expectBandwidthTrackingDisabled()
+          expectPDFCachingDisabled()
+        })
+
+        describe('with enable_pdf_caching=true', function () {
+          beforeEach(function () {
+            this.req.query.enable_pdf_caching = 'true'
+          })
+          expectBandwidthTrackingDisabled()
+          expectPDFCachingDisabled()
+        })
+      }
+
+      function tagAnonymous() {
+        beforeEach(function () {
+          this.SessionManager.isUserLoggedIn = sinon.stub().returns(false)
+        })
+      }
+
+      beforeEach(function () {
+        this.settings.enablePdfCaching = true
+      })
+
+      describe('during regular roll-out', function () {
+        describe('disabled', function () {
+          showNoVariant()
+
+          describe('regular user', function () {
+            expectToNotBeEnrolledAtAll()
+          })
+          describe('anonymous user', function () {
+            tagAnonymous()
+            expectToCachePDFOnly()
+          })
+        })
+
+        describe('variant=collect-metrics', function () {
+          showVariant('collect-metrics')
+
+          describe('regular user', function () {
+            expectToCollectMetricsOnly()
+          })
+          describe('anonymous user', function () {
+            tagAnonymous()
+            expectToCachePDFOnly()
+          })
+        })
+
+        describe('variant=collect-metrics-and-enable-caching', function () {
+          showVariant('collect-metrics-and-enable-caching')
+
+          describe('regular user', function () {
+            expectToCollectMetricsAndCachePDF()
+          })
+          describe('anonymous user', function () {
+            tagAnonymous()
+            expectToCachePDFOnly()
+          })
+        })
+
+        describe('variant=enable-caching-only', function () {
+          showVariant('enable-caching-only')
+
+          describe('regular user', function () {
+            expectToCachePDFOnly()
+          })
+          describe('anonymous user', function () {
+            tagAnonymous()
+            expectToCachePDFOnly()
+          })
+        })
+      })
+    })
+
     describe('wsUrl', function () {
       function checkLoadEditorWsMetric(metric) {
         it(`should inc metric ${metric}`, function (done) {
@@ -1353,7 +1560,7 @@ describe('ProjectController', function () {
         .stub()
         .callsArgWith(2, null, [])
       this.ProjectController._buildProjectList = sinon.stub().returns(projects)
-      this.AuthenticationController.getLoggedInUserId = sinon
+      this.SessionManager.getLoggedInUserId = sinon
         .stub()
         .returns(this.user._id)
       done()
@@ -1375,9 +1582,7 @@ describe('ProjectController', function () {
 
   describe('projectEntitiesJson', function () {
     beforeEach(function () {
-      this.AuthenticationController.getLoggedInUserId = sinon
-        .stub()
-        .returns('abc')
+      this.SessionManager.getLoggedInUserId = sinon.stub().returns('abc')
       this.req.params = { Project_id: 'abcd' }
       this.project = { _id: 'abcd' }
       this.docs = [

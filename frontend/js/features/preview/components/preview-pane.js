@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import PropTypes from 'prop-types'
 import PreviewToolbar from './preview-toolbar'
 import PreviewLogsPane from './preview-logs-pane'
@@ -117,6 +117,7 @@ function PreviewPane({
       {showFirstErrorPopUp ? (
         <PreviewFirstErrorPopUp
           logEntry={compilerState.logEntries.errors[0]}
+          nErrors={nErrors}
           onGoToErrorLocation={onLogEntryLocationClick}
           onViewLogs={onToggleLogs}
           onClose={handleFirstErrorPopUpClose}

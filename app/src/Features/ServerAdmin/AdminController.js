@@ -19,7 +19,7 @@ const metrics = require('@overleaf/metrics')
 const logger = require('logger-sharelatex')
 const _ = require('underscore')
 const DocumentUpdaterHandler = require('../DocumentUpdater/DocumentUpdaterHandler')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 const TpdsUpdateSender = require('../ThirdPartyDataStore/TpdsUpdateSender')
 const TpdsProjectFlusher = require('../ThirdPartyDataStore/TpdsProjectFlusher')
 const EditorRealTimeController = require('../Editor/EditorRealTimeController')
@@ -106,6 +106,12 @@ const AdminController = {
       'Sorry, we are performing a quick update to the editor and need to close it down. Please refresh the page to continue.',
       delay
     )
+    return res.sendStatus(200)
+  },
+
+  unregisterServiceWorker: (req, res) => {
+    logger.warn('unregistering service worker for all users')
+    EditorRealTimeController.emitToAll('unregisterServiceWorker')
     return res.sendStatus(200)
   },
 

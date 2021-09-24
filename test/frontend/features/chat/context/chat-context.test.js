@@ -1,7 +1,6 @@
 // Disable prop type checks for test harnesses
 /* eslint-disable react/prop-types */
 
-import React from 'react'
 import { renderHook, act } from '@testing-library/react-hooks/dom'
 import { expect } from 'chai'
 import fetchMock from 'fetch-mock'
@@ -208,6 +207,18 @@ describe('ChatContext', function () {
       result.current.loadInitialMessages()
       expect(fetchMock.calls()).to.have.lengthOf(1)
     })
+
+    it('provides an error on failure', async function () {
+      fetchMock.reset()
+      fetchMock.get('express:/project/:projectId/messages', 500)
+      const { result, waitForNextUpdate } = renderChatContextHook({ user })
+
+      result.current.loadInitialMessages()
+      await waitForNextUpdate()
+
+      expect(result.current.error).to.exist
+      expect(result.current.status).to.equal('error')
+    })
   })
 
   describe('loadMoreMessages', function () {
@@ -352,6 +363,18 @@ describe('ChatContext', function () {
         'socket message',
       ])
     })
+
+    it('provides an error on failures', async function () {
+      fetchMock.reset()
+      fetchMock.get('express:/project/:projectId/messages', 500)
+      const { result, waitForNextUpdate } = renderChatContextHook({ user })
+
+      result.current.loadMoreMessages()
+      await waitForNextUpdate()
+
+      expect(result.current.error).to.exist
+      expect(result.current.status).to.equal('error')
+    })
   })
 
   describe('sendMessage', function () {
@@ -396,6 +419,20 @@ describe('ChatContext', function () {
           method: 'post',
         })
       ).to.be.false
+    })
+
+    it('provides an error on failure', async function () {
+      fetchMock.reset()
+      fetchMock
+        .get('express:/project/:projectId/messages', [])
+        .postOnce('express:/project/:projectId/messages', 500)
+      const { result, waitForNextUpdate } = renderChatContextHook({ user })
+
+      result.current.sendMessage('sent message')
+      await waitForNextUpdate()
+
+      expect(result.current.error).to.exist
+      expect(result.current.status).to.equal('error')
     })
   })
 
