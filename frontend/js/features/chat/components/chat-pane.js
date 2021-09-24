@@ -5,17 +5,21 @@ import { useTranslation } from 'react-i18next'
 import MessageList from './message-list'
 import MessageInput from './message-input'
 import InfiniteScroll from './infinite-scroll'
+import ChatFallbackError from './chat-fallback-error'
 import Icon from '../../../shared/components/icon'
 import { useLayoutContext } from '../../../shared/context/layout-context'
-import { useApplicationContext } from '../../../shared/context/application-context'
+import { useUserContext } from '../../../shared/context/user-context'
 import withErrorBoundary from '../../../infrastructure/error-boundary'
+import { FetchError } from '../../../infrastructure/fetch-json'
 import { useChatContext } from '../context/chat-context'
 
-function ChatPane() {
+const ChatPane = React.memo(function ChatPane() {
   const { t } = useTranslation()
 
   const { chatIsOpen } = useLayoutContext({ chatIsOpen: PropTypes.bool })
-  const { user } = useApplicationContext()
+  const user = useUserContext({
+    id: PropTypes.string.isRequired,
+  })
 
   const {
     status,
@@ -24,8 +28,10 @@ function ChatPane() {
     atEnd,
     loadInitialMessages,
     loadMoreMessages,
+    reset,
     sendMessage,
     markMessagesAsRead,
+    error,
   } = useChatContext()
 
   useEffect(() => {
@@ -40,6 +46,18 @@ function ChatPane() {
     (acc, { contents }) => acc + contents.length,
     0
   )
+
+  if (error) {
+    // let user try recover from fetch errors
+    if (error instanceof FetchError) {
+      return <ChatFallbackError reconnect={reset} />
+    }
+    throw error
+  }
+
+  if (!user) {
+    return null
+  }
 
   return (
     <aside className="chat">
@@ -67,7 +85,7 @@ function ChatPane() {
       />
     </aside>
   )
-}
+})
 
 function LoadingSpinner() {
   const { t } = useTranslation()
@@ -93,4 +111,4 @@ function Placeholder() {
   )
 }
 
-export default withErrorBoundary(ChatPane)
+export default withErrorBoundary(ChatPane, ChatFallbackError)

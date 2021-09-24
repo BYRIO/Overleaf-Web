@@ -1,6 +1,6 @@
-let defaultFeatures, docUpdaterPort, siteUrl, v1Api
-const http = require('http')
-http.globalAgent.maxSockets = 300
+const { merge } = require('@overleaf/settings/merge')
+
+let defaultFeatures, siteUrl
 
 // Make time interval config easier.
 const seconds = 1000
@@ -16,20 +16,6 @@ if (httpAuthUser && httpAuthPass) {
 }
 
 const sessionSecret = process.env.SESSION_SECRET || 'secret-please-change'
-
-if (process.env.V1_API_URL || process.env.V1_HOST) {
-  v1Api = {
-    url: process.env.V1_API_URL || `http://${process.env.V1_HOST}:5000`,
-    user: process.env.V1_API_USER,
-    pass: process.env.V1_API_PASSWORD,
-  }
-} else {
-  v1Api = {
-    url: undefined,
-    user: undefined,
-    pass: undefined,
-  }
-}
 
 const intFromEnv = function (name, defaultValue) {
   if (
@@ -73,6 +59,8 @@ const defaultTextExtensions = [
   'lua',
   'gv',
   'mf',
+  'yml',
+  'yaml',
 ]
 
 const parseTextExtensions = function (extensions) {
@@ -84,6 +72,13 @@ const parseTextExtensions = function (extensions) {
 }
 
 module.exports = {
+  env: 'server-ce',
+
+  limits: {
+    httpGlobalAgentMaxSockets: 300,
+    httpsGlobalAgentMaxSockets: 300,
+  },
+
   allowAnonymousReadAndWriteSharing:
     process.env.SHARELATEX_ALLOW_ANONYMOUS_READ_AND_WRITE_SHARING === 'true',
 
@@ -153,12 +148,6 @@ module.exports = {
         process.env.REDIS_MAX_RETRIES_PER_REQUEST || '20'
       ),
     },
-
-    queues: {
-      host: process.env.QUEUES_REDIS_HOST || 'localhost',
-      port: process.env.QUEUES_REDIS_PORT || '6379',
-      password: process.env.QUEUES_REDIS_PASSWORD || '',
-    },
   },
 
   // Service locations
@@ -172,14 +161,7 @@ module.exports = {
       port: process.env.WEB_PORT || 3000,
       host: process.env.LISTEN_ADDRESS || 'localhost',
     },
-    documentupdater: {
-      port: (docUpdaterPort = 3003),
-    },
   },
-
-  gitBridgePublicBaseUrl: `http://${
-    process.env.GIT_BRIDGE_HOST || 'localhost'
-  }:8000`,
 
   // Tell each service where to find the other services. If everything
   // is running locally then this is easy, but they exist as separate config
@@ -197,15 +179,7 @@ module.exports = {
         process.env.DOCUPDATER_HOST ||
         process.env.DOCUMENT_UPDATER_HOST ||
         'localhost'
-      }:${docUpdaterPort}`,
-    },
-    thirdPartyDataStore: {
-      url: `http://${process.env.TPDS_HOST || 'localhost'}:3002`,
-      emptyProjectFlushDelayMiliseconds: 5 * seconds,
-      dropboxApp: process.env.TPDS_DROPBOX_APP,
-    },
-    tags: {
-      url: `http://${process.env.TAGS_HOST || 'localhost'}:3012`,
+      }:3003`,
     },
     spelling: {
       url: `http://${process.env.SPELLING_HOST || 'localhost'}:3005`,
@@ -214,29 +188,12 @@ module.exports = {
     trackchanges: {
       url: `http://${process.env.TRACK_CHANGES_HOST || 'localhost'}:3015`,
     },
-    project_history: {
-      sendProjectStructureOps:
-        process.env.PROJECT_HISTORY_ENABLED === 'true' || false,
-      initializeHistoryForNewProjects:
-        process.env.PROJECT_HISTORY_ENABLED === 'true' || false,
-      displayHistoryForNewProjects:
-        process.env.PROJECT_HISTORY_ENABLED === 'true' || false,
-      url: `http://${process.env.PROJECT_HISTORY_HOST || 'localhost'}:3054`,
-    },
     docstore: {
       url: `http://${process.env.DOCSTORE_HOST || 'localhost'}:3016`,
       pubUrl: `http://${process.env.DOCSTORE_HOST || 'localhost'}:3016`,
     },
     chat: {
-      url: `http://${process.env.CHAT_HOST || 'localhost'}:3010`,
       internal_url: `http://${process.env.CHAT_HOST || 'localhost'}:3010`,
-    },
-    blog: {
-      url: 'http://localhost:3008',
-      port: 3008,
-    },
-    university: {
-      url: 'http://localhost:3011',
     },
     filestore: {
       url: `http://${process.env.FILESTORE_HOST || 'localhost'}:3009`,
@@ -246,137 +203,22 @@ module.exports = {
       // url: "http://#{process.env['CLSI_LB_HOST']}:3014"
       backendGroupName: undefined,
     },
-    templates: {
-      url: `http://${process.env.TEMPLATES_HOST || 'localhost'}:3007`,
-    },
-    githubSync: {
-      url: `http://${process.env.GITHUB_SYNC_HOST || 'localhost'}:3022`,
-    },
-    recurly: {
-      apiKey: process.env.RECURLY_API_KEY || '',
-      apiVersion: process.env.RECURLY_API_VERSION,
-      subdomain: process.env.RECURLY_SUBDOMAIN || '',
-      publicKey: process.env.RECURLY_PUBLIC_KEY || '',
-    },
-    geoIpLookup: {
-      url: `http://${
-        process.env.GEOIP_HOST || process.env.FREEGEOIP_HOST || 'localhost'
-      }:8080/json/`,
-    },
     realTime: {
       url: `http://${process.env.REALTIME_HOST || 'localhost'}:3026`,
     },
     contacts: {
       url: `http://${process.env.CONTACTS_HOST || 'localhost'}:3036`,
     },
-    sixpack: {
-      url: '',
-    },
-    references: {
-      url:
-        process.env.REFERENCES_HOST != null
-          ? `http://${process.env.REFERENCES_HOST}:3040`
-          : undefined,
-    },
     notifications: {
       url: `http://${process.env.NOTIFICATIONS_HOST || 'localhost'}:3042`,
     },
-    analytics: {
-      url: `http://${process.env.ANALYTICS_HOST || 'localhost'}:3050`,
-    },
-    linkedUrlProxy: {
-      url: process.env.LINKED_URL_PROXY,
-    },
-    thirdpartyreferences: {
-      url: `http://${
-        process.env.THIRD_PARTY_REFERENCES_HOST || 'localhost'
-      }:3046`,
-      timeout: parseInt(
-        process.env.THIRD_PARTY_REFERENCES_TIMEOUT || '30000',
-        10
-      ),
-    },
-    v1: {
-      url: v1Api.url,
-      user: v1Api.user,
-      pass: v1Api.pass,
-    },
-    v1_history: {
-      url: `http://${process.env.V1_HISTORY_HOST || 'localhost'}:3100/api`,
-      user: process.env.V1_HISTORY_USER || 'staging',
-      pass: process.env.V1_HISTORY_PASSWORD || 'password',
-    },
+
+    // For legacy reasons, we need to populate the below objects.
+    v1: {},
+    recurly: {},
   },
 
-  templates: {
-    user_id: process.env.TEMPLATES_USER_ID || '5395eb7aad1f29a88756c7f2',
-    showSocialButtons: false,
-    showComments: false,
-  },
-
-  splitTests: [
-    {
-      id: 'example-project-v2',
-      active: process.env.SPLITTEST_EXAMPLE_PROJECT_ACTIVE === 'true',
-      variants: [
-        {
-          id: 'example-frog',
-          rolloutPercent: parseInt(
-            process.env
-              .SPLITTEST_EXAMPLE_PROJECT_FROG_VARIANT_ROLLOUT_PERCENT || '0',
-            10
-          ),
-        },
-      ],
-    },
-    {
-      id: 'subscription-page',
-      active: process.env.SPLITTEST_SUBSCRIPTION_PAGE_ACTIVE === 'true',
-      variants: [
-        {
-          id: 'new',
-          rolloutPercent: parseInt(
-            process.env
-              .SPLITTEST_SUBSCRIPTION_PAGE_NEW_VARIANT_ROLLOUT_PERCENT || '0',
-            10
-          ),
-        },
-      ],
-    },
-    {
-      id: 'enable_pdf_caching',
-      active: process.env.SPLIT_TEST_ENABLE_PDF_CACHING_ACTIVE === 'true',
-      variants: [
-        {
-          id: 'enabled',
-          rolloutPercent: parseInt(
-            process.env.SPLIT_TEST_ENABLE_PDF_CACHING_ENABLE_ROLLOUT_PERCENT ||
-              '0',
-            10
-          ),
-        },
-      ],
-    },
-    {
-      id: 'track_pdf_download',
-      active: process.env.SPLIT_TEST_TRACK_PDF_DOWNLOAD_ACTIVE === 'true',
-      variants: [
-        {
-          id: 'enabled',
-          rolloutPercent: parseInt(
-            process.env.SPLIT_TEST_TRACK_PDF_DOWNLOAD_ENABLE_ROLLOUT_PERCENT ||
-              '0',
-            10
-          ),
-        },
-      ],
-    },
-  ],
-
-  // cdn:
-  // 	web:
-  // 		host:"http://nowhere.sharelatex.dev"
-  //		darkHost:"http://cdn.sharelatex.dev:3000"
+  splitTests: [],
 
   // Where your instance of ShareLaTeX can be found publically. Used in emails
   // that are sent out, generated links, etc.
@@ -404,22 +246,6 @@ module.exports = {
   ),
   wsRetryHandshake: parseInt(process.env.WEBSOCKET_RETRY_HANDSHAKE || '5', 10),
 
-  // Compile UI rollout percentages
-  logsUIPercentageBeta: parseInt(
-    process.env.LOGS_UI_PERCENTAGE_BETA || '0',
-    10
-  ),
-  logsUIPercentageWithoutPopupBeta: parseInt(
-    process.env.LOGS_UI_WITHOUT_POPUP_PERCENTAGE_BETA || '0',
-    10
-  ),
-
-  logsUIPercentage: parseInt(process.env.LOGS_UI_PERCENTAGE || '0', 10),
-  logsUIPercentageWithoutPopup: parseInt(
-    process.env.LOGS_UI_WITHOUT_POPUP_PERCENTAGE || '0',
-    10
-  ),
-
   // cookie domain
   // use full domain for cookies to only be accessible from that domain,
   // replace subdomain with dot to have them accessible on all subdomains
@@ -428,9 +254,6 @@ module.exports = {
 
   // this is only used if cookies are used for clsi backend
   // clsiCookieKey: "clsiserver"
-
-  // Same, but with http auth credentials.
-  httpAuthSiteUrl: `http://${httpAuthUser}:${httpAuthPass}@${siteUrl}`,
 
   robotsNoindex: process.env.ROBOTS_NOINDEX === 'true' || false,
 
@@ -451,17 +274,6 @@ module.exports = {
   }, // number of rounds used to hash user passwords (raised to power 2)
 
   httpAuthUsers,
-
-  twoFactorAuthentication: {
-    enabled: process.env.TWO_FACTOR_AUTHENTICATION_ENABLED === 'true',
-    requiredForStaff:
-      process.env.TWO_FACTOR_AUTHENTICATION_REQUIRED_FOR_STAFF === 'true',
-  },
-
-  jwt: {
-    key: process.env.OT_JWT_AUTH_KEY,
-    algorithm: process.env.OT_JWT_AUTH_ALG || 'HS256',
-  },
 
   // Default features
   // ----------------
@@ -594,32 +406,8 @@ module.exports = {
   //		AWSAccessKeyID: ""
   //		AWSSecretKey: ""
 
-  // Third party services
-  // --------------------
-  //
-  // ShareLaTeX's regular newsletter is managed by mailchimp. Add your
-  // credentials here to integrate with this.
-  // mailchimp:
-  // 	api_key: ""
-  // 	list_id: ""
-  //
-  // Fill in your unique token from various analytics services to enable
-  // them.
-  // analytics:
-  // 	ga:
-  // 		token: ""
-  // 	gaOptimize:
-  // 		id: ""
-  // ShareLaTeX's help desk is provided by tenderapp.com
-  // tenderUrl: ""
-  //
-  // Client-side error logging is provided by getsentry.com
-  sentry: {
-    environment: process.env.SENTRY_ENVIRONMENT,
-    release: process.env.SENTRY_RELEASE,
-  },
-  //   publicDSN: ""
-  // The publicDSN is the token for the client-side getSentry service.
+  // For legacy reasons, we need to populate this object.
+  sentry: {},
 
   // Production Settings
   // -------------------
@@ -666,8 +454,6 @@ module.exports = {
   // public projects, /learn, /templates, about pages, etc.
   allowPublicAccess: process.env.SHARELATEX_ALLOW_PUBLIC_ACCESS === 'true',
 
-  enableHomepage: process.env.HOME_PAGE_ENABLED === 'true',
-
   // editor should be open by default
   editorIsOpen: process.env.EDITOR_OPEN !== 'false',
 
@@ -683,6 +469,9 @@ module.exports = {
 
   // By default turn on feature flag, can be overridden per request.
   enablePdfCaching: process.env.ENABLE_PDF_CACHING === 'true',
+
+  // Whether to disable any existing service worker on the next load of the editor
+  resetServiceWorker: process.env.RESET_SERVICE_WORKER === 'true',
 
   // Maximum size of text documents in the real-time editing system.
   max_doc_length: 2 * 1024 * 1024, // 2mb
@@ -737,11 +526,9 @@ module.exports = {
   appName: process.env.APP_NAME || 'ShareLaTeX (Community Edition)',
 
   adminEmail: process.env.ADMIN_EMAIL || 'placeholder@example.com',
-  adminDomains: JSON.parse(process.env.ADMIN_DOMAINS || 'null'),
-
-  salesEmail: process.env.SALES_EMAIL || 'placeholder@example.com',
-
-  statusPageUrl: process.env.OVERLEAF_STATUS_URL || 'status.overleaf.com',
+  adminDomains: process.env.ADMIN_DOMAINS
+    ? JSON.parse(process.env.ADMIN_DOMAINS)
+    : undefined,
 
   nav: {
     title: 'ShareLaTeX Community Edition',
@@ -770,82 +557,19 @@ module.exports = {
   recaptcha: {
     disabled: {
       invite: true,
+      login: true,
+      passwordReset: true,
       register: true,
     },
   },
 
   customisation: {},
 
-  //	templates: [{
-  //		name : "cv_or_resume",
-  //		url : "/templates/cv"
-  //	}, {
-  //		name : "cover_letter",
-  //		url : "/templates/cover-letters"
-  //	}, {
-  //		name : "journal_article",
-  //		url : "/templates/journals"
-  //	}, {
-  //		name : "presentation",
-  //		url : "/templates/presentations"
-  //	}, {
-  //		name : "thesis",
-  //		url : "/templates/thesis"
-  //	}, {
-  //		name : "bibliographies",
-  //		url : "/templates/bibliographies"
-  //	}, {
-  //		name : "view_all",
-  //		url : "/templates"
-  //	}]
-
   redirects: {
     '/templates/index': '/templates/',
   },
 
   reloadModuleViewsOnEachRequest: process.env.NODE_ENV === 'development',
-  disableModule: {
-    'user-activate': process.env.DISABLE_MODULE_USER_ACTIVATE === 'true',
-    launchpad: process.env.DISABLE_MODULE_LAUNCHPAD === 'true',
-  },
-
-  domainLicences: [],
-
-  sixpack: {
-    domain: '',
-  },
-  // ShareLaTeX Server Pro options (https://www.sharelatex.com/university/onsite.html)
-  // ----------
-
-  // LDAP
-  // ----------
-  // Settings below use a working LDAP test server kindly provided by forumsys.com
-  // When testing with forumsys.com use username = einstein and password = password
-
-  // ldap :
-  // 	host: 'ldap://ldap.forumsys.com'
-  // 	dn: 'uid=:userKey,dc=example,dc=com'
-  // 	baseSearch: 'dc=example,dc=com'
-  // 	filter: "(uid=:userKey)"
-  // 	failMessage: 'LDAP User Fail'
-  // 	fieldName: 'LDAP User'
-  // 	placeholder: 'email@example.com'
-  // 	emailAtt: 'mail'
-  // 	anonymous: false
-  //	adminDN: 'cn=read-only-admin,dc=example,dc=com'
-  //	adminPW: 'password'
-  //	starttls: true
-  //	tlsOptions:
-  //		rejectUnauthorized: false
-  //		ca: ['/etc/ldap/ca_certs.pem']
-
-  // templateLinks: [{
-  //	name : "CV projects",
-  //	url : "/templates/cv"
-  // },{
-  //	name : "all projects",
-  //	url: "/templates/all"
-  // }]
 
   rateLimit: {
     autoCompile: {
@@ -855,11 +579,8 @@ module.exports = {
   },
 
   analytics: {
-    enabled: process.env.ANALYTICS_ENABLED === 'true',
+    enabled: false,
   },
-
-  // currentImage: "texlive-full:2017.1"
-  // imageRoot: "<DOCKER REPOSITORY ROOT>" # without any trailing slash
 
   compileBodySizeLimitMb: process.env.COMPILE_BODY_SIZE_LIMIT_MB || 5,
 
@@ -871,14 +592,6 @@ module.exports = {
 
   emailConfirmationDisabled:
     process.env.EMAIL_CONFIRMATION_DISABLED === 'true' || false,
-
-  // allowedImageNames: [
-  // 	{imageName: 'texlive-full:2017.1', imageDesc: 'TeXLive 2017'}
-  // 	{imageName:   'wl_texlive:2018.1', imageDesc: 'Legacy OL TeXLive 2015'}
-  // 	{imageName: 'texlive-full:2016.1', imageDesc: 'Legacy SL TeXLive 2016'}
-  // 	{imageName: 'texlive-full:2015.1', imageDesc: 'Legacy SL TeXLive 2015'}
-  // 	{imageName: 'texlive-full:2014.2', imageDesc: 'Legacy SL TeXLive 2014.2'}
-  // ]
 
   enabledServices: (process.env.ENABLED_SERVICES || 'web,api')
     .split(',')
@@ -992,6 +705,8 @@ module.exports = {
     tprLinkedFileRefreshError: [],
   },
 
+  moduleImportSequence: ['launchpad', 'server-ce-scripts', 'user-activate'],
+
   csp: {
     percentage: parseFloat(process.env.CSP_PERCENTAGE) || 0,
     enabled: process.env.CSP_ENABLED === 'true',
@@ -1004,4 +719,8 @@ module.exports = {
   unsupportedBrowsers: {
     ie: '<=11',
   },
+}
+
+module.exports.mergeWith = function (overrides) {
+  return merge(overrides, module.exports)
 }

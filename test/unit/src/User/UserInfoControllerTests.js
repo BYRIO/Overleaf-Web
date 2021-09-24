@@ -23,12 +23,6 @@ describe('UserInfoController', function () {
   beforeEach(function () {
     this.UserDeleter = { deleteUser: sinon.stub().callsArgWith(1) }
     this.UserUpdater = { updatePersonalInfo: sinon.stub() }
-    this.sanitizer = {
-      escape(v) {
-        return v
-      },
-    }
-    sinon.spy(this.sanitizer, 'escape')
     this.UserGetter = {}
 
     this.UserInfoController = SandboxedModule.require(modulePath, {
@@ -37,8 +31,7 @@ describe('UserInfoController', function () {
         './UserGetter': this.UserGetter,
         './UserUpdater': this.UserUpdater,
         './UserDeleter': this.UserDeleter,
-        sanitizer: this.sanitizer,
-        '../Authentication/AuthenticationController': (this.AuthenticationController = {
+        '../Authentication/SessionManager': (this.SessionManager = {
           getLoggedInUserId: sinon.stub(),
         }),
       },
@@ -56,7 +49,7 @@ describe('UserInfoController', function () {
       this.req.session.user = this.user
       this.UserInfoController.sendFormattedPersonalInfo = sinon.stub()
       this.UserGetter.getUser = sinon.stub().callsArgWith(2, null, this.user)
-      this.AuthenticationController.getLoggedInUserId = sinon
+      this.SessionManager.getLoggedInUserId = sinon
         .stub()
         .returns(this.user._id)
       return this.UserInfoController.getLoggedInUsersPersonalInfo(

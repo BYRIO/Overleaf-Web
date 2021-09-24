@@ -4,13 +4,14 @@ const ProjectController = require('./Features/Project/ProjectController')
 const ProjectApiController = require('./Features/Project/ProjectApiController')
 const SpellingController = require('./Features/Spelling/SpellingController')
 const EditorRouter = require('./Features/Editor/EditorRouter')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 const TpdsController = require('./Features/ThirdPartyDataStore/TpdsController')
 const SubscriptionRouter = require('./Features/Subscription/SubscriptionRouter')
 const UploadsRouter = require('./Features/Uploads/UploadsRouter')
 const metrics = require('@overleaf/metrics')
 const ReferalController = require('./Features/Referal/ReferalController')
 const AuthenticationController = require('./Features/Authentication/AuthenticationController')
+const SessionManager = require('./Features/Authentication/SessionManager')
 const TagsController = require('./Features/Tags/TagsController')
 const NotificationsController = require('./Features/Notifications/NotificationsController')
 const CollaboratorsRouter = require('./Features/Collaborators/CollaboratorsRouter')
@@ -48,6 +49,7 @@ const TemplatesRouter = require('./Features/Templates/TemplatesRouter')
 const InstitutionsController = require('./Features/Institutions/InstitutionsController')
 const UserMembershipRouter = require('./Features/UserMembership/UserMembershipRouter')
 const SystemMessageController = require('./Features/SystemMessages/SystemMessageController')
+const AnalyticsRegistrationSourceMiddleware = require('./Features/Analytics/AnalyticsRegistrationSourceMiddleware')
 const { Joi, validate } = require('./infrastructure/Validation')
 const {
   renderUnsupportedBrowserPage,
@@ -64,10 +66,18 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
     webRouter.all('*', AuthenticationController.requireGlobalLogin)
   }
 
+  webRouter.get('*', AnalyticsRegistrationSourceMiddleware.setInbound())
+
   webRouter.get('/login', UserPagesController.loginPage)
   AuthenticationController.addEndpointToLoginWhitelist('/login')
 
   webRouter.post('/login', AuthenticationController.passportLogin)
+
+  if (Settings.enableLegacyLogin) {
+    AuthenticationController.addEndpointToLoginWhitelist('/login/legacy')
+    webRouter.get('/login/legacy', UserPagesController.loginPage)
+    webRouter.post('/login/legacy', AuthenticationController.passportLogin)
+  }
 
   webRouter.get(
     '/read-only/one-time-login',
@@ -82,7 +92,7 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
 
   webRouter.get('/restricted', AuthorizationMiddleware.restricted)
 
-  if (Features.hasFeature('registration')) {
+  if (Features.hasFeature('registration-page')) {
     webRouter.get('/register', UserPagesController.registerPage)
     AuthenticationController.addEndpointToLoginWhitelist('/register')
   }
@@ -231,7 +241,7 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
   )
   privateApiRouter.get(
     '/user/:user_id/personal_info',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     UserInfoController.getPersonalInfo
   )
 
@@ -564,7 +574,7 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
   )
   privateApiRouter.post(
     '/project/:Project_id/history/resync',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     HistoryController.resyncProjectHistory
   )
 
@@ -639,28 +649,28 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
   )
   privateApiRouter.post(
     '/internal/expire-deleted-projects-after-duration',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     ProjectController.expireDeletedProjectsAfterDuration
   )
   privateApiRouter.post(
     '/internal/expire-deleted-users-after-duration',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     UserController.expireDeletedUsersAfterDuration
   )
   privateApiRouter.post(
     '/internal/project/:projectId/expire-deleted-project',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     ProjectController.expireDeletedProject
   )
   privateApiRouter.post(
     '/internal/users/:userId/expire',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     UserController.expireDeletedUser
   )
 
   privateApiRouter.get(
     '/user/:userId/tag',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     TagsController.apiGetAllTags
   )
   webRouter.get(
@@ -733,35 +743,35 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
   // Deprecated in favour of /internal/project/:project_id but still used by versioning
   privateApiRouter.get(
     '/project/:project_id/details',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     ProjectApiController.getProjectDetails
   )
 
   // New 'stable' /internal API end points
   privateApiRouter.get(
     '/internal/project/:project_id',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     ProjectApiController.getProjectDetails
   )
   privateApiRouter.get(
     '/internal/project/:Project_id/zip',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     ProjectDownloadsController.downloadProject
   )
   privateApiRouter.get(
     '/internal/project/:project_id/compile/pdf',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     CompileController.compileAndDownloadPdf
   )
 
   privateApiRouter.post(
     '/internal/deactivateOldProjects',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     InactiveProjectController.deactivateOldProjects
   )
   privateApiRouter.post(
     '/internal/project/:project_id/deactivate',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     InactiveProjectController.deactivateProject
   )
 
@@ -775,40 +785,40 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
       req.params = params
       next()
     },
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     CompileController.getFileFromClsi
   )
 
   privateApiRouter.get(
     '/project/:Project_id/doc/:doc_id',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     DocumentController.getDocument
   )
   privateApiRouter.post(
     '/project/:Project_id/doc/:doc_id',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     DocumentController.setDocument
   )
 
   privateApiRouter.post(
     '/user/:user_id/update/*',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     TpdsController.mergeUpdate
   )
   privateApiRouter.delete(
     '/user/:user_id/update/*',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     TpdsController.deleteUpdate
   )
 
   privateApiRouter.post(
     '/project/:project_id/contents/*',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     TpdsController.updateProjectContents
   )
   privateApiRouter.delete(
     '/project/:project_id/contents/*',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     TpdsController.deleteProjectContents
   )
 
@@ -884,7 +894,7 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
   // overleaf-integration module), but may expand beyond that role.
   publicApiRouter.post(
     '/api/clsi/compile/:submission_id',
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     CompileController.compileSubmission
   )
   publicApiRouter.get(
@@ -898,7 +908,7 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
       req.params = params
       next()
     },
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     CompileController.getFileFromClsiWithoutUser
   )
   publicApiRouter.post(
@@ -908,13 +918,13 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
       maxRequests: 1,
       timeInterval: 60,
     }),
-    AuthenticationController.httpAuth,
+    AuthenticationController.requirePrivateApiAuth(),
     InstitutionsController.confirmDomain
   )
 
   webRouter.get('/chrome', function (req, res, next) {
     // Match v1 behaviour - this is used for a Chrome web app
-    if (AuthenticationController.isUserLoggedIn(req)) {
+    if (SessionManager.isUserLoggedIn(req.session)) {
       res.redirect('/project')
     } else {
       res.redirect('/register')
@@ -983,6 +993,11 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
     AuthorizationMiddleware.ensureUserIsSiteAdmin,
     AdminController.clearMessages
   )
+  webRouter.post(
+    '/admin/unregisterServiceWorker',
+    AuthorizationMiddleware.ensureUserIsSiteAdmin,
+    AdminController.unregisterServiceWorker
+  )
 
   privateApiRouter.post(
     '/disconnectAllUsers',
@@ -1014,6 +1029,16 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
   )
   privateApiRouter.get(
     '/health_check',
+    HealthCheckController.checkActiveHandles,
+    HealthCheckController.checkApi
+  )
+  publicApiRouter.get(
+    '/health_check/api',
+    HealthCheckController.checkActiveHandles,
+    HealthCheckController.checkApi
+  )
+  privateApiRouter.get(
+    '/health_check/api',
     HealthCheckController.checkActiveHandles,
     HealthCheckController.checkApi
   )
@@ -1115,7 +1140,9 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
       maxRequests: 15,
       timeInterval: 60,
     }),
-    TokenAccessController.tokenAccessPage
+    AnalyticsRegistrationSourceMiddleware.setSource('link-sharing'),
+    TokenAccessController.tokenAccessPage,
+    AnalyticsRegistrationSourceMiddleware.clearSource()
   )
 
   webRouter.get(
@@ -1125,7 +1152,9 @@ function initialize(webRouter, privateApiRouter, publicApiRouter) {
       maxRequests: 15,
       timeInterval: 60,
     }),
-    TokenAccessController.tokenAccessPage
+    AnalyticsRegistrationSourceMiddleware.setSource('link-sharing'),
+    TokenAccessController.tokenAccessPage,
+    AnalyticsRegistrationSourceMiddleware.clearSource()
   )
 
   webRouter.post(

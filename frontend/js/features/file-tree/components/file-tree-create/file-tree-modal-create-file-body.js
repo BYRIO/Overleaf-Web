@@ -1,4 +1,3 @@
-import React from 'react'
 import { useTranslation } from 'react-i18next'
 import FileTreeCreateNewDoc from './modes/file-tree-create-new-doc'
 import FileTreeImportFromUrl from './modes/file-tree-import-from-url'
@@ -41,11 +40,14 @@ export default function FileTreeModalCreateFileBody() {
                 label={t('upload')}
               />
 
-              <FileTreeModalCreateFileMode
-                mode="project"
-                icon="folder-open"
-                label={t('from_another_project')}
-              />
+              {(window.ExposedSettings.hasLinkedProjectFileFeature ||
+                window.ExposedSettings.hasLinkedProjectOutputFileFeature) && (
+                <FileTreeModalCreateFileMode
+                  mode="project"
+                  icon="folder-open"
+                  label={t('from_another_project')}
+                />
+              )}
 
               {window.ExposedSettings.hasLinkUrlFeature && (
                 <FileTreeModalCreateFileMode

@@ -1,13 +1,14 @@
 const AuthenticationController = require('../Authentication/AuthenticationController')
+const SessionManager = require('../Authentication/SessionManager')
 const ContactController = require('./ContactController')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 
 function contactsAuthenticationMiddleware() {
   if (!Settings.allowAnonymousReadAndWriteSharing) {
     return AuthenticationController.requireLogin()
   } else {
     return (req, res, next) => {
-      if (AuthenticationController.isUserLoggedIn(req)) {
+      if (SessionManager.isUserLoggedIn(req.session)) {
         next()
       } else {
         res.send({ contacts: [] })

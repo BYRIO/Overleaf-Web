@@ -3,6 +3,7 @@ extends ../layout
 block vars
 	- var suppressNavbar = true
 	- var suppressFooter = true
+	- var suppressSkipToContent = true
 	- metadata.robotsNoindexNofollow = true
 
 block _headLinks
@@ -81,7 +82,6 @@ block content
 				else
 					include ./editor/header
 
-				include ./editor/share
 				!= moduleIncludes("publish:body", locals)
 
 				include ./editor/history/toolbarV2.pug
@@ -106,8 +106,8 @@ block content
 					.ui-layout-center
 						include ./editor/editor
 
-						if showNewBinaryFileUI
-							include ./editor/binary-file-react
+						if showNewFileViewUI
+							include ./editor/file-view
 						else
 							include ./editor/binary-file
 						include ./editor/history
@@ -189,6 +189,7 @@ block append meta
 	meta(name="ol-showSymbolPalette" data-type="boolean" content=showSymbolPalette)
 	meta(name="ol-enablePdfCaching" data-type="boolean" content=enablePdfCaching)
 	meta(name="ol-trackPdfDownload" data-type="boolean" content=trackPdfDownload)
+	meta(name="ol-resetServiceWorker" data-type="boolean" content=resetServiceWorker)
 
 	- var fileActionI18n = ['edited', 'renamed', 'created', 'deleted'].reduce((acc, i) => {acc[i] = translate('file_action_' + i); return acc}, {})
 	meta(name="ol-fileActionI18n" data-type="json" content=fileActionI18n)

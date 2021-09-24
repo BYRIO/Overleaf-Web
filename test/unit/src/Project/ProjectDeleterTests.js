@@ -132,9 +132,13 @@ describe('ProjectDeleter', function () {
         deleteProject: sinon.stub().resolves(),
       },
     }
+    this.Features = {
+      hasFeature: sinon.stub().returns(true),
+    }
 
     this.ProjectDeleter = SandboxedModule.require(modulePath, {
       requires: {
+        '../../infrastructure/Features': this.Features,
         '../Editor/EditorRealTimeController': this.EditorRealTimeController,
         '../../models/Project': { Project: Project },
         './ProjectHelper': this.ProjectHelper,
@@ -369,6 +373,12 @@ describe('ProjectDeleter', function () {
 
   describe('expireDeletedProjectsAfterDuration', function () {
     beforeEach(async function () {
+      for (const deletedProject of this.deletedProjects) {
+        this.ProjectMock.expects('findById')
+          .withArgs(deletedProject.deleterData.deletedProjectId)
+          .chain('exec')
+          .resolves(null)
+      }
       this.DeletedProjectMock.expects('find')
         .withArgs({
           'deleterData.deletedAt': {
@@ -413,64 +423,159 @@ describe('ProjectDeleter', function () {
   })
 
   describe('expireDeletedProject', function () {
-    beforeEach(async function () {
-      this.DeletedProjectMock.expects('updateOne')
-        .withArgs(
-          {
-            _id: this.deletedProjects[0]._id,
-          },
-          {
-            $set: {
-              'deleterData.deleterIpAddress': null,
-              project: null,
+    describe('on an inactive project', function () {
+      beforeEach(async function () {
+        this.ProjectMock.expects('findById')
+          .withArgs(this.deletedProjects[0].deleterData.deletedProjectId)
+          .chain('exec')
+          .resolves(null)
+        this.DeletedProjectMock.expects('updateOne')
+          .withArgs(
+            {
+              _id: this.deletedProjects[0]._id,
             },
-          }
+            {
+              $set: {
+                'deleterData.deleterIpAddress': null,
+                project: null,
+              },
+            }
+          )
+          .chain('exec')
+          .resolves()
+
+        this.DeletedProjectMock.expects('findOne')
+          .withArgs({
+            'deleterData.deletedProjectId': this.deletedProjects[0].project._id,
+          })
+          .chain('exec')
+          .resolves(this.deletedProjects[0])
+
+        await this.ProjectDeleter.promises.expireDeletedProject(
+          this.deletedProjects[0].project._id
         )
-        .chain('exec')
-        .resolves()
+      })
 
-      this.DeletedProjectMock.expects('findOne')
-        .withArgs({
-          'deleterData.deletedProjectId': this.deletedProjects[0].project._id,
+      it('should find the specified deletedProject and remove its project and ip address', function () {
+        this.DeletedProjectMock.verify()
+      })
+
+      it('should destroy the docs in docstore', function () {
+        expect(
+          this.DocstoreManager.promises.destroyProject
+        ).to.have.been.calledWith(this.deletedProjects[0].project._id)
+      })
+
+      it('should delete the project in history', function () {
+        expect(
+          this.HistoryManager.promises.deleteProject
+        ).to.have.been.calledWith(
+          this.deletedProjects[0].project._id,
+          this.deletedProjects[0].project.overleaf.history.id
+        )
+      })
+
+      it('should destroy the files in filestore', function () {
+        expect(
+          this.FileStoreHandler.promises.deleteProject
+        ).to.have.been.calledWith(this.deletedProjects[0].project._id)
+      })
+
+      it('should destroy the files in project-archiver', function () {
+        expect(
+          this.TpdsUpdateSender.promises.deleteProject
+        ).to.have.been.calledWith({
+          project_id: this.deletedProjects[0].project._id,
         })
-        .chain('exec')
-        .resolves(this.deletedProjects[0])
-
-      await this.ProjectDeleter.promises.expireDeletedProject(
-        this.deletedProjects[0].project._id
-      )
+      })
     })
 
-    it('should find the specified deletedProject and remove its project and ip address', function () {
-      this.DeletedProjectMock.verify()
+    describe('when history-v1 is not available', function () {
+      beforeEach(async function () {
+        this.Features.hasFeature.returns(false)
+
+        this.ProjectMock.expects('findById')
+          .withArgs(this.deletedProjects[0].deleterData.deletedProjectId)
+          .chain('exec')
+          .resolves(null)
+        this.DeletedProjectMock.expects('updateOne')
+          .withArgs(
+            {
+              _id: this.deletedProjects[0]._id,
+            },
+            {
+              $set: {
+                'deleterData.deleterIpAddress': null,
+                project: null,
+              },
+            }
+          )
+          .chain('exec')
+          .resolves()
+
+        this.DeletedProjectMock.expects('findOne')
+          .withArgs({
+            'deleterData.deletedProjectId': this.deletedProjects[0].project._id,
+          })
+          .chain('exec')
+          .resolves(this.deletedProjects[0])
+
+        await this.ProjectDeleter.promises.expireDeletedProject(
+          this.deletedProjects[0].project._id
+        )
+      })
+
+      it('should destroy the docs in docstore', function () {
+        expect(
+          this.DocstoreManager.promises.destroyProject
+        ).to.have.been.calledWith(this.deletedProjects[0].project._id)
+      })
+
+      it('should not call project history', function () {
+        expect(this.HistoryManager.promises.deleteProject).to.not.have.been
+          .called
+      })
     })
 
-    it('should destroy the docs in docstore', function () {
-      expect(
-        this.DocstoreManager.promises.destroyProject
-      ).to.have.been.calledWith(this.deletedProjects[0].project._id)
-    })
+    describe('on an active project (from an incomplete delete)', function () {
+      beforeEach(async function () {
+        this.ProjectMock.expects('findById')
+          .withArgs(this.deletedProjects[0].deleterData.deletedProjectId)
+          .chain('exec')
+          .resolves(this.deletedProjects[0].project)
+        this.DeletedProjectMock.expects('deleteOne')
+          .withArgs({
+            'deleterData.deletedProjectId': this.deletedProjects[0].project._id,
+          })
+          .chain('exec')
+          .resolves()
+        await this.ProjectDeleter.promises.expireDeletedProject(
+          this.deletedProjects[0].project._id
+        )
+      })
 
-    it('should delete the project in history', function () {
-      expect(
-        this.HistoryManager.promises.deleteProject
-      ).to.have.been.calledWith(
-        this.deletedProjects[0].project._id,
-        this.deletedProjects[0].project.overleaf.history.id
-      )
-    })
+      it('should delete the spurious deleted project record', function () {
+        this.DeletedProjectMock.verify()
+      })
 
-    it('should destroy the files in filestore', function () {
-      expect(
-        this.FileStoreHandler.promises.deleteProject
-      ).to.have.been.calledWith(this.deletedProjects[0].project._id)
-    })
+      it('should not destroy the docs in docstore', function () {
+        expect(this.DocstoreManager.promises.destroyProject).to.not.have.been
+          .called
+      })
 
-    it('should destroy the files in project-archiver', function () {
-      expect(
-        this.TpdsUpdateSender.promises.deleteProject
-      ).to.have.been.calledWith({
-        project_id: this.deletedProjects[0].project._id,
+      it('should not delete the project in history', function () {
+        expect(this.HistoryManager.promises.deleteProject).to.not.have.been
+          .called
+      })
+
+      it('should not destroy the files in filestore', function () {
+        expect(this.FileStoreHandler.promises.deleteProject).to.not.have.been
+          .called
+      })
+
+      it('should not destroy the files in project-archiver', function () {
+        expect(this.TpdsUpdateSender.promises.deleteProject).to.not.have.been
+          .called
       })
     })
   })

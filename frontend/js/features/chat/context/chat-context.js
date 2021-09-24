@@ -1,4 +1,4 @@
-import React, {
+import {
   createContext,
   useCallback,
   useContext,
@@ -9,8 +9,8 @@ import React, {
 import PropTypes from 'prop-types'
 import { v4 as uuid } from 'uuid'
 
-import { useApplicationContext } from '../../../shared/context/application-context'
-import { useEditorContext } from '../../../shared/context/editor-context'
+import { useUserContext } from '../../../shared/context/user-context'
+import { useProjectContext } from '../../../shared/context/project-context'
 import { getJSON, postJSON } from '../../../infrastructure/fetch-json'
 import { appendMessage, prependMessages } from '../utils/message-list-appender'
 import useBrowserWindow from '../../../shared/hooks/use-browser-window'
@@ -72,6 +72,9 @@ export function chatReducer(state, action) {
         unreadMessageCount: 0,
       }
 
+    case 'CLEAR':
+      return { ...initialState }
+
     case 'ERROR':
       return {
         ...state,
@@ -108,15 +111,17 @@ ChatContext.Provider.propTypes = {
     loadMoreMessages: PropTypes.func.isRequired,
     sendMessage: PropTypes.func.isRequired,
     markMessagesAsRead: PropTypes.func.isRequired,
+    reset: PropTypes.func.isRequired,
+    error: PropTypes.object,
   }).isRequired,
 }
 
 export function ChatProvider({ children }) {
-  const { user } = useApplicationContext({
-    user: PropTypes.shape({ id: PropTypes.string.isRequired }.isRequired),
+  const user = useUserContext({
+    id: PropTypes.string.isRequired,
   })
-  const { projectId } = useEditorContext({
-    projectId: PropTypes.string.isRequired,
+  const { _id: projectId } = useProjectContext({
+    _id: PropTypes.string.isRequired,
   })
 
   const { chatIsOpen } = useLayoutContext({ chatIsOpen: PropTypes.bool })
@@ -129,7 +134,7 @@ export function ChatProvider({ children }) {
 
   const [state, dispatch] = useReducer(chatReducer, initialState)
 
-  const { loadInitialMessages, loadMoreMessages } = useMemo(() => {
+  const { loadInitialMessages, loadMoreMessages, reset } = useMemo(() => {
     function fetchMessages() {
       if (state.atEnd) return
 
@@ -142,12 +147,19 @@ export function ChatProvider({ children }) {
       const queryString = new URLSearchParams(query)
       const url = `/project/${projectId}/messages?${queryString.toString()}`
 
-      getJSON(url).then((messages = []) => {
-        dispatch({
-          type: 'FETCH_MESSAGES_SUCCESS',
-          messages: messages.reverse(),
+      getJSON(url)
+        .then((messages = []) => {
+          dispatch({
+            type: 'FETCH_MESSAGES_SUCCESS',
+            messages: messages.reverse(),
+          })
         })
-      })
+        .catch(error => {
+          dispatch({
+            type: 'ERROR',
+            error: error,
+          })
+        })
     }
 
     function loadInitialMessages() {
@@ -162,9 +174,15 @@ export function ChatProvider({ children }) {
       fetchMessages()
     }
 
+    function reset() {
+      dispatch({ type: 'CLEAR' })
+      fetchMessages()
+    }
+
     return {
       loadInitialMessages,
       loadMoreMessages,
+      reset,
     }
   }, [projectId, state.atEnd, state.initialMessagesLoaded, state.lastTimestamp])
 
@@ -181,6 +199,11 @@ export function ChatProvider({ children }) {
       const url = `/project/${projectId}/messages`
       postJSON(url, {
         body: { content },
+      }).catch(error => {
+        dispatch({
+          type: 'ERROR',
+          error: error,
+        })
       })
     },
     [projectId, user]
@@ -199,7 +222,7 @@ export function ChatProvider({ children }) {
       // If the message is from the current user and they just sent a message,
       // then we are receiving the sent message back from the socket. Ignore it
       // to prevent double message
-      const messageIsFromSelf = message?.user?.id === user.id
+      const messageIsFromSelf = message?.user?.id === user?.id
       if (messageIsFromSelf && state.messageWasJustSent) return
 
       dispatch({ type: 'RECEIVE_MESSAGE', message })
@@ -219,7 +242,7 @@ export function ChatProvider({ children }) {
     // We're adding and removing the socket listener every time we send a
     // message (and messageWasJustSent changes). Not great, but no good way
     // around it
-  }, [socket, state.messageWasJustSent, state.unreadMessageCount, user.id])
+  }, [socket, state.messageWasJustSent, state.unreadMessageCount, user])
 
   // Handle unread messages
   useEffect(() => {
@@ -241,17 +264,34 @@ export function ChatProvider({ children }) {
     markMessagesAsRead,
   ])
 
-  const value = {
-    status: state.status,
-    messages: state.messages,
-    initialMessagesLoaded: state.initialMessagesLoaded,
-    atEnd: state.atEnd,
-    unreadMessageCount: state.unreadMessageCount,
-    loadInitialMessages,
-    loadMoreMessages,
-    sendMessage,
-    markMessagesAsRead,
-  }
+  const value = useMemo(
+    () => ({
+      status: state.status,
+      messages: state.messages,
+      initialMessagesLoaded: state.initialMessagesLoaded,
+      atEnd: state.atEnd,
+      unreadMessageCount: state.unreadMessageCount,
+      loadInitialMessages,
+      loadMoreMessages,
+      reset,
+      sendMessage,
+      markMessagesAsRead,
+      error: state.error,
+    }),
+    [
+      loadInitialMessages,
+      loadMoreMessages,
+      markMessagesAsRead,
+      reset,
+      sendMessage,
+      state.atEnd,
+      state.error,
+      state.initialMessagesLoaded,
+      state.messages,
+      state.status,
+      state.unreadMessageCount,
+    ]
+  )
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
 }

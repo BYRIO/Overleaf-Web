@@ -16,6 +16,7 @@
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
  */
 
+import './utils/webpack-public-path'
 import './libraries'
 import './infrastructure/error-reporter'
 import './modules/recursionHelper'
@@ -35,7 +36,6 @@ const App = angular
     'ErrorCatcher',
     'localStorage',
     'sessionStorage',
-    'ngTagsInput',
     'ui.select',
   ])
   .config(function ($qProvider, $httpProvider, uiSelectConfig) {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { Button, ControlLabel, FormControl, FormGroup } from 'react-bootstrap'
 import Icon from '../../../../../shared/components/icon'
 import FileTreeCreateNameInput from '../file-tree-create-name-input'
@@ -16,6 +16,13 @@ import ErrorMessage from '../error-message'
 export default function FileTreeImportFromProject() {
   const { t } = useTranslation()
 
+  const {
+    hasLinkedProjectFileFeature,
+    hasLinkedProjectOutputFileFeature,
+  } = window.ExposedSettings
+  const canSwitchOutputFilesMode =
+    hasLinkedProjectFileFeature && hasLinkedProjectOutputFileFeature
+
   const { name, setName, validName } = useFileTreeCreateName()
   const { setValid } = useFileTreeCreateForm()
   const { projectId } = useFileTreeMainContext()
@@ -24,7 +31,10 @@ export default function FileTreeImportFromProject() {
   const [selectedProject, setSelectedProject] = useState()
   const [selectedProjectEntity, setSelectedProjectEntity] = useState()
   const [selectedProjectOutputFile, setSelectedProjectOutputFile] = useState()
-  const [isOutputFilesMode, setOutputFilesMode] = useState(false)
+  const [isOutputFilesMode, setOutputFilesMode] = useState(
+    // default to project file mode, unless the feature is not enabled
+    !hasLinkedProjectFileFeature
+  )
 
   // use the basename of a path as the file name
   const setNameFromPath = useCallback(
@@ -123,20 +133,22 @@ export default function FileTreeImportFromProject() {
         />
       )}
 
-      <div className="toggle-file-type-button">
-        or&nbsp;
-        <Button
-          bsStyle="link"
-          type="button"
-          onClick={() => setOutputFilesMode(value => !value)}
-        >
-          <span>
-            {isOutputFilesMode
-              ? t('select_from_source_files')
-              : t('select_from_output_files')}
-          </span>
-        </Button>
-      </div>
+      {canSwitchOutputFilesMode && (
+        <div className="toggle-file-type-button">
+          or&nbsp;
+          <Button
+            bsStyle="link"
+            type="button"
+            onClick={() => setOutputFilesMode(value => !value)}
+          >
+            <span>
+              {isOutputFilesMode
+                ? t('select_from_source_files')
+                : t('select_from_output_files')}
+            </span>
+          </Button>
+        </div>
+      )}
 
       <FileTreeCreateNameInput
         label={t('file_name_in_this_project')}
@@ -155,8 +167,7 @@ export default function FileTreeImportFromProject() {
 function SelectProject({ projectId, selectedProject, setSelectedProject }) {
   const { t } = useTranslation()
 
-  // NOTE: unhandled error
-  const { data, loading } = useUserProjects()
+  const { data, error, loading } = useUserProjects()
 
   const filteredData = useMemo(() => {
     if (!data) {
@@ -165,6 +176,10 @@ function SelectProject({ projectId, selectedProject, setSelectedProject }) {
 
     return data.filter(item => item._id !== projectId)
   }, [data, projectId])
+
+  if (error) {
+    return <ErrorMessage error={error} />
+  }
 
   return (
     <FormGroup className="form-controls" controlId="project-select">
@@ -218,8 +233,11 @@ function SelectProjectOutputFile({
 }) {
   const { t } = useTranslation()
 
-  // NOTE: unhandled error
-  const { data, loading } = useProjectOutputFiles(selectedProjectId)
+  const { data, error, loading } = useProjectOutputFiles(selectedProjectId)
+
+  if (error) {
+    return <ErrorMessage error={error} />
+  }
 
   return (
     <FormGroup
@@ -272,8 +290,11 @@ function SelectProjectEntity({
 }) {
   const { t } = useTranslation()
 
-  // NOTE: unhandled error
-  const { data, loading } = useProjectEntities(selectedProjectId)
+  const { data, error, loading } = useProjectEntities(selectedProjectId)
+
+  if (error) {
+    return <ErrorMessage error={error} />
+  }
 
   return (
     <FormGroup

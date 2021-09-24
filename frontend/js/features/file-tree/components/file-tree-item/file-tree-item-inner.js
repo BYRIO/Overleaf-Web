@@ -1,4 +1,4 @@
-import React, { useEffect, createRef } from 'react'
+import { useEffect, createRef } from 'react'
 import PropTypes from 'prop-types'
 import classNames from 'classnames'
 import scrollIntoViewIfNeeded from 'scroll-into-view-if-needed'
@@ -8,13 +8,17 @@ import { useDraggable } from '../../contexts/file-tree-draggable'
 
 import FileTreeItemName from './file-tree-item-name'
 import FileTreeItemMenu from './file-tree-item-menu'
+import { useFileTreeSelectable } from '../../contexts/file-tree-selectable'
 
 function FileTreeItemInner({ id, name, isSelected, icons }) {
   const { hasWritePermissions, setContextMenuCoords } = useFileTreeMainContext()
 
-  const hasMenu = hasWritePermissions && isSelected
+  const { selectedEntityIds } = useFileTreeSelectable()
 
-  const { isDragging, dragRef, isDraggable, setIsDraggable } = useDraggable(id)
+  const hasMenu =
+    hasWritePermissions && isSelected && selectedEntityIds.size === 1
+
+  const { isDragging, dragRef, setIsDraggable } = useDraggable(id)
 
   const itemRef = createRef()
 
@@ -52,7 +56,6 @@ function FileTreeItemInner({ id, name, isSelected, icons }) {
       role="presentation"
       ref={dragRef}
       onContextMenu={handleContextMenu}
-      draggable={isDraggable}
     >
       <div
         className="entity-name entity-name-react"

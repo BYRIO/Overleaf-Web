@@ -32,13 +32,15 @@ import MetadataManager from './ide/metadata/MetadataManager'
 import ReviewPanelManager from './ide/review-panel/ReviewPanelManager'
 import OutlineManager from './features/outline/outline-manager'
 import SafariScrollPatcher from './ide/SafariScrollPatcher'
-import { loadServiceWorker } from './ide/pdfng/directives/serviceWorkerManager'
+import {
+  loadServiceWorker,
+  unregisterServiceWorker,
+} from './ide/pdfng/directives/serviceWorkerManager'
 import './ide/cobranding/CobrandingDataService'
 import './ide/settings/index'
-import './ide/share/index'
-import './ide/binary-files/index'
 import './ide/chat/index'
 import './ide/clone/index'
+import './ide/file-view/index'
 import './ide/hotkeys/index'
 import './ide/wordcount/index'
 import './ide/directives/layout'
@@ -64,6 +66,7 @@ import './main/system-messages'
 import '../../modules/modules-ide.js'
 import './shared/context/controllers/root-context-controller'
 import './features/editor-navigation-toolbar/controllers/editor-navigation-toolbar-controller'
+import './features/share-project-modal/controllers/react-share-project-modal-controller'
 import getMeta from './utils/meta'
 
 App.controller(
@@ -132,7 +135,7 @@ App.controller(
         return
       }
       $scope.ui.reviewPanelOpen = !$scope.ui.reviewPanelOpen
-      return eventTracking.sendMB('rp-toggle-panel', {
+      eventTracking.sendMB('rp-toggle-panel', {
         value: $scope.ui.reviewPanelOpen,
       })
     }
@@ -153,24 +156,25 @@ App.controller(
         $scope.$broadcast('layout:flat-screen:toggle')
       }
       if (newView != null && newView !== 'editor' && newView !== 'pdf') {
-        return eventTracking.sendMBOnce(`ide-open-view-${newView}-once`)
+        eventTracking.sendMBOnce(`ide-open-view-${newView}-once`)
       }
     })
 
     $scope.$watch('ui.chatOpen', function (isOpen) {
       if (isOpen) {
-        return eventTracking.sendMBOnce('ide-open-chat-once')
+        eventTracking.sendMBOnce('ide-open-chat-once')
       }
     })
 
     $scope.$watch('ui.leftMenuShown', function (isOpen) {
       if (isOpen) {
-        return eventTracking.sendMBOnce('ide-open-left-menu-once')
+        eventTracking.sendMBOnce('ide-open-left-menu-once')
       }
     })
 
-    $scope.trackHover = feature =>
+    $scope.trackHover = feature => {
       eventTracking.sendMBOnce(`ide-hover-${feature}-once`)
+    }
     // End of tracking code.
 
     window._ide = ide
@@ -353,6 +357,9 @@ If the project has been renamed please look in your project list for a new proje
       x => x[1]
     )
 
+    // Allow service worker to be removed via the websocket
+    ide.$scope.$on('service-worker:unregister', unregisterServiceWorker)
+
     return ide.socket.on('project:publicAccessLevel:changed', data => {
       if (data.newAccessLevel != null) {
         ide.$scope.project.publicAccesLevel = data.newAccessLevel
@@ -362,7 +369,9 @@ If the project has been renamed please look in your project list for a new proje
   }
 )
 
-if (getMeta('ol-enablePdfCaching')) {
+if (getMeta('ol-resetServiceWorker')) {
+  unregisterServiceWorker()
+} else if (getMeta('ol-enablePdfCaching')) {
   loadServiceWorker()
 }
 

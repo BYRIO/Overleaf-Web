@@ -1,3 +1,4 @@
+const Features = require('../../infrastructure/Features')
 const _ = require('lodash')
 const { db, ObjectId } = require('../../infrastructure/mongodb')
 const { callbackify } = require('util')
@@ -205,6 +206,36 @@ async function deleteProject(projectId, options = {}) {
       throw new Errors.NotFoundError('project not found')
     }
 
+    await DocumentUpdaterHandler.promises.flushProjectToMongoAndDelete(
+      projectId
+    )
+
+    try {
+      // OPTIMIZATION: flush docs out of mongo
+      await DocstoreManager.promises.archiveProject(projectId)
+    } catch (err) {
+      // It is OK to fail here, the docs will get hard-deleted eventually after
+      //  the grace-period for soft-deleted projects has passed.
+      logger.warn(
+        { projectId, err },
+        'failed archiving doc via docstore as part of project soft-deletion'
+      )
+    }
+
+    const memberIds = await CollaboratorsGetter.promises.getMemberIds(projectId)
+
+    // fire these jobs in the background
+    for (const memberId of memberIds) {
+      TagsHandler.promises
+        .removeProjectFromAllTags(memberId, projectId)
+        .catch(err => {
+          logger.err(
+            { err, memberId, projectId },
+            'failed to remove project from tags'
+          )
+        })
+    }
+
     const deleterData = {
       deletedAt: new Date(),
       deleterId:
@@ -238,36 +269,6 @@ async function deleteProject(projectId, options = {}) {
       { project, deleterData },
       { upsert: true }
     )
-
-    await DocumentUpdaterHandler.promises.flushProjectToMongoAndDelete(
-      projectId
-    )
-
-    try {
-      // OPTIMIZATION: flush docs out of mongo
-      await DocstoreManager.promises.archiveProject(projectId)
-    } catch (err) {
-      // It is OK to fail here, the docs will get hard-deleted eventually after
-      //  the grace-period for soft-deleted projects has passed.
-      logger.warn(
-        { projectId, err },
-        'failed archiving doc via docstore as part of project soft-deletion'
-      )
-    }
-
-    const memberIds = await CollaboratorsGetter.promises.getMemberIds(projectId)
-
-    // fire these jobs in the background
-    for (const memberId of memberIds) {
-      TagsHandler.promises
-        .removeProjectFromAllTags(memberId, projectId)
-        .catch(err => {
-          logger.err(
-            { err, memberId, projectId },
-            'failed to remove project from tags'
-          )
-        })
-    }
 
     await Project.deleteOne({ _id: projectId }).exec()
   } catch (err) {
@@ -342,6 +343,16 @@ async function undeleteProject(projectId, options = {}) {
 
 async function expireDeletedProject(projectId) {
   try {
+    const activeProject = await Project.findById(projectId).exec()
+    if (activeProject) {
+      // That project is active. The deleted project record might be there
+      // because of an incomplete delete or undelete operation. Clean it up and
+      // return.
+      await DeletedProject.deleteOne({
+        'deleterData.deletedProjectId': projectId,
+      })
+      return
+    }
     const deletedProject = await DeletedProject.findOne({
       'deleterData.deletedProjectId': projectId,
     }).exec()
@@ -365,10 +376,12 @@ async function expireDeletedProject(projectId) {
 
     await Promise.all([
       DocstoreManager.promises.destroyProject(deletedProject.project._id),
-      HistoryManager.promises.deleteProject(
-        deletedProject.project._id,
-        historyId
-      ),
+      Features.hasFeature('history-v1')
+        ? HistoryManager.promises.deleteProject(
+            deletedProject.project._id,
+            historyId
+          )
+        : Promise.resolve(),
       FilestoreHandler.promises.deleteProject(deletedProject.project._id),
       TpdsUpdateSender.promises.deleteProject({
         project_id: deletedProject.project._id,

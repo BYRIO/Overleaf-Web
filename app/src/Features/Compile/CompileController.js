@@ -2,7 +2,6 @@
     camelcase,
     node/handle-callback-err,
     max-len,
-    no-undef,
     no-unused-vars,
 */
 // TODO: This file was created by bulk-decaffeinate.
@@ -21,10 +20,8 @@ const CompileManager = require('./CompileManager')
 const ClsiManager = require('./ClsiManager')
 const logger = require('logger-sharelatex')
 const request = require('request')
-const sanitize = require('sanitizer')
-const Settings = require('settings-sharelatex')
-const AuthenticationController = require('../Authentication/AuthenticationController')
-const UserGetter = require('../User/UserGetter')
+const Settings = require('@overleaf/settings')
+const SessionManager = require('../Authentication/SessionManager')
 const RateLimiter = require('../../infrastructure/RateLimiter')
 const ClsiCookieManager = require('./ClsiCookieManager')(
   Settings.apis.clsi != null ? Settings.apis.clsi.backendGroupName : undefined
@@ -47,7 +44,7 @@ module.exports = CompileController = {
     const project_id = req.params.Project_id
     const isAutoCompile = !!req.query.auto_compile
     const enablePdfCaching = !!req.query.enable_pdf_caching
-    const user_id = AuthenticationController.getLoggedInUserId(req)
+    const user_id = SessionManager.getLoggedInUserId(req.session)
     const options = {
       isAutoCompile,
       enablePdfCaching,
@@ -113,7 +110,7 @@ module.exports = CompileController = {
       next = function (error) {}
     }
     const project_id = req.params.Project_id
-    const user_id = AuthenticationController.getLoggedInUserId(req)
+    const user_id = SessionManager.getLoggedInUserId(req.session)
     return CompileManager.stopCompile(project_id, user_id, function (error) {
       if (error != null) {
         return next(error)
@@ -176,7 +173,7 @@ module.exports = CompileController = {
   _compileAsUser(req, callback) {
     // callback with user_id if per-user, undefined otherwise
     if (!Settings.disablePerUserCompiles) {
-      const user_id = AuthenticationController.getLoggedInUserId(req)
+      const user_id = SessionManager.getLoggedInUserId(req.session)
       return callback(null, user_id)
     } else {
       return callback()
@@ -186,7 +183,7 @@ module.exports = CompileController = {
   _downloadAsUser(req, callback) {
     // callback with user_id if per-user, undefined otherwise
     if (!Settings.disablePerUserCompiles) {
-      const user_id = AuthenticationController.getLoggedInUserId(req)
+      const user_id = SessionManager.getLoggedInUserId(req.session)
       return callback(null, user_id)
     } else {
       return callback()
@@ -266,7 +263,7 @@ module.exports = CompileController = {
   _getSafeProjectName(project) {
     const wordRegExp = /\W/g
     const safeProjectName = project.name.replace(wordRegExp, '_')
-    return sanitize.escape(safeProjectName)
+    return safeProjectName
   },
 
   deleteAuxFiles(req, res, next) {
@@ -497,7 +494,7 @@ module.exports = CompileController = {
       let qs
       if (err != null) {
         OError.tag(err, 'error getting cookie jar for clsi request')
-        return callback(err)
+        return next(err)
       }
       // expand any url parameter passed in as {url:..., qs:...}
       if (typeof url === 'object') {

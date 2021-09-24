@@ -13,7 +13,7 @@
 let CaptchaMiddleware
 const request = require('request')
 const logger = require('logger-sharelatex')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 
 module.exports = CaptchaMiddleware = {
   validateCaptcha(action) {
@@ -24,11 +24,7 @@ module.exports = CaptchaMiddleware = {
       ) {
         return next()
       }
-      const inviteAndCaptchaDisabled =
-        action === 'invite' && Settings.recaptcha.disabled.invite
-      const registerAndCaptchaDisabled =
-        action === 'register' && Settings.recaptcha.disabled.register
-      if (inviteAndCaptchaDisabled || registerAndCaptchaDisabled) {
+      if (Settings.recaptcha.disabled[action]) {
         return next()
       }
       const response = req.body['g-recaptcha-response']

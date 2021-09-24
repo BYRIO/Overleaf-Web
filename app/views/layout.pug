@@ -92,9 +92,9 @@ html(
 			meta(name="ol-ExposedSettings" data-type="json" content=ExposedSettings)
 
 			if (typeof(settings.algolia) != "undefined")
-				meta(name="ol-sharelatex.algolia" data-type="json" content={
-					app_id: settings.algolia.app_id,
-					api_key: settings.algolia.read_only_api_key,
+				meta(name="ol-algolia" data-type="json" content={
+					appId: settings.algolia.app_id,
+					apiKey: settings.algolia.read_only_api_key,
 					indexes: settings.algolia.indexes
 				})
 
@@ -110,8 +110,10 @@ html(
 
 	body(ng-csp=(cspEnabled ? "no-unsafe-eval" : false))
 		if(settings.recaptcha && settings.recaptcha.siteKeyV3)
-			script(type="text/javascript", nonce=scriptNonce, src="https://www.google.com/recaptcha/api.js?render="+settings.recaptcha.siteKeyV3)
+			script(type="text/javascript", nonce=scriptNonce, src="https://www.recaptcha.net/recaptcha/api.js?render="+settings.recaptcha.siteKeyV3)
 
+		if (typeof(suppressSkipToContent) == "undefined")
+			a(class="skip-to-content" href="#main-content") #{translate('skip_to_content')}
 
 		if (typeof(suppressNavbar) == "undefined")
 			include layout/navbar
@@ -135,3 +137,11 @@ html(
 					//- Set query param, server will not set CDN url
 					window.location.search += "&nocdn=true";
 				}
+			if hasFeature('saas')
+				script(type="text/javascript", nonce=scriptNonce).
+					//- Test for CDN availability and report to sentry if loading failed
+					var cdnLoadTest = document.createElement('img')
+					cdnLoadTest.addEventListener('error', function () {
+						throw new Error('CDN test image load error (cdn.overleaf.net)')
+					})
+					cdnLoadTest.src = 'https://cdn.overleaf.net/img/1p.gif'

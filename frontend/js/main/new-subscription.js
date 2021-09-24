@@ -103,15 +103,38 @@ export default App.controller(
     const pricing = recurly.Pricing()
     window.pricing = pricing
 
-    pricing
-      .plan(window.plan_code, { quantity: 1 })
-      .address({
-        country: $scope.data.country,
-      })
-      .tax({ tax_code: 'digital', vat_number: '' })
-      .currency($scope.currencyCode)
-      .coupon($scope.data.coupon)
-      .done()
+    function setupPricing() {
+      pricing
+        .plan(window.plan_code, { quantity: 1 })
+        .address({
+          country: $scope.data.country,
+        })
+        .tax({ tax_code: 'digital', vat_number: '' })
+        .currency($scope.currencyCode)
+        .coupon($scope.data.coupon)
+        .catch(function (err) {
+          if (
+            $scope.currencyCode !== 'USD' &&
+            err.name === 'invalid-currency'
+          ) {
+            $scope.currencyCode = 'USD'
+            setupPricing()
+          } else if (err.name === 'api-error' && err.code === 'not-found') {
+            // not-found here should refer to the coupon code, plan_code should be valid
+            $scope.$applyAsync(() => {
+              $scope.couponError = 'Coupon code is not valid for selected plan'
+            })
+          } else {
+            // Bail out on other errors, form state will not be correct
+            $scope.$applyAsync(() => {
+              $scope.recurlyLoadError = true
+            })
+            throw err
+          }
+        })
+        .done()
+    }
+    setupPricing()
 
     pricing.on('change', () => {
       $scope.planName = pricing.items.plan.name
@@ -161,7 +184,25 @@ export default App.controller(
       $scope.$apply()
     })
 
-    $scope.applyCoupon = () => pricing.coupon($scope.data.coupon).done()
+    $scope.applyCoupon = () => {
+      $scope.couponError = ''
+      pricing
+        .coupon($scope.data.coupon)
+        .catch(err => {
+          if (err.name === 'api-error' && err.code === 'not-found') {
+            $scope.$applyAsync(() => {
+              $scope.couponError = 'Coupon code is not valid for selected plan'
+            })
+          } else {
+            $scope.$applyAsync(() => {
+              $scope.couponError =
+                'An error occured when verifying the coupon code'
+            })
+            throw err
+          }
+        })
+        .done()
+    }
 
     $scope.applyVatNumber = () =>
       pricing
@@ -170,7 +211,19 @@ export default App.controller(
 
     $scope.changeCurrency = function (newCurrency) {
       $scope.currencyCode = newCurrency
-      return pricing.currency(newCurrency).done()
+      return pricing
+        .currency(newCurrency)
+        .catch(function (err) {
+          if (
+            $scope.currencyCode !== 'USD' &&
+            err.name === 'invalid-currency'
+          ) {
+            $scope.changeCurrency('USD')
+          } else {
+            throw err
+          }
+        })
+        .done()
     }
 
     $scope.inputHasError = function (formItem) {
@@ -629,9 +682,5 @@ export default App.controller(
       { code: 'ZM', name: 'Zambia' },
       { code: 'ZW', name: 'Zimbabwe' },
     ]
-
-    $scope.filledForm = function () {
-      eventTracking.sendMBOnce('payment-page-form-fill')
-    }
   }
 )

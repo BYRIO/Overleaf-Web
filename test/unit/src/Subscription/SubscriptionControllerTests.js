@@ -47,7 +47,7 @@ describe('SubscriptionController', function () {
     this.activeRecurlySubscription =
       mockSubscriptions['subscription-123-active']
 
-    this.AuthenticationController = {
+    this.SessionManager = {
       getLoggedInUser: sinon.stub().callsArgWith(1, null, this.user),
       getLoggedInUserId: sinon.stub().returns(this.user._id),
       getSessionUser: sinon.stub().returns(this.user),
@@ -121,14 +121,13 @@ describe('SubscriptionController', function () {
     }
     this.SubscriptionController = SandboxedModule.require(modulePath, {
       requires: {
-        '../Authentication/AuthenticationController': this
-          .AuthenticationController,
+        '../Authentication/SessionManager': this.SessionManager,
         './SubscriptionHandler': this.SubscriptionHandler,
         './PlansLocator': this.PlansLocator,
         './SubscriptionViewModelBuilder': this.SubscriptionViewModelBuilder,
         './LimitationsManager': this.LimitationsManager,
         '../../infrastructure/GeoIpLookup': this.GeoIpLookup,
-        'settings-sharelatex': this.settings,
+        '@overleaf/settings': this.settings,
         '../User/UserGetter': this.UserGetter,
         './RecurlyWrapper': (this.RecurlyWrapper = {
           updateAccountEmailAddress: sinon.stub().yields(),
@@ -142,6 +141,7 @@ describe('SubscriptionController', function () {
         './Errors': SubscriptionErrors,
         '../Analytics/AnalyticsManager': (this.AnalyticsManager = {
           recordEvent: sinon.stub(),
+          setUserProperty: sinon.stub(),
         }),
         '../SplitTests/SplitTestHandler': (this.SplitTestHandler = {
           getTestSegmentation: () => {},
@@ -160,9 +160,9 @@ describe('SubscriptionController', function () {
   describe('plansPage', function () {
     beforeEach(function () {
       this.req.ip = '1234.3123.3131.333 313.133.445.666 653.5345.5345.534'
-      return this.GeoIpLookup.promises.getCurrencyCode.resolves(
-        this.stubbedCurrencyCode
-      )
+      return this.GeoIpLookup.promises.getCurrencyCode.resolves({
+        currencyCode: this.stubbedCurrencyCode,
+      })
     })
   })
 
@@ -173,7 +173,7 @@ describe('SubscriptionController', function () {
         .stub()
         .resolves(true)
       return this.GeoIpLookup.promises.getCurrencyCode.resolves({
-        recomendedCurrency: this.stubbedCurrencyCode,
+        currencyCode: this.stubbedCurrencyCode,
       })
     })
 
@@ -575,8 +575,15 @@ describe('SubscriptionController', function () {
         this.req = {
           body: {
             expired_subscription_notification: {
+              account: {
+                account_code: this.user._id,
+              },
               subscription: {
                 uuid: this.activeRecurlySubscription.uuid,
+                plan: {
+                  plan_code: 'collaborator',
+                  state: 'active',
+                },
               },
             },
           },
@@ -640,8 +647,15 @@ describe('SubscriptionController', function () {
         this.req = {
           body: {
             renewed_subscription_notification: {
+              account: {
+                account_code: this.user._id,
+              },
               subscription: {
                 uuid: this.activeRecurlySubscription.uuid,
+                plan: {
+                  plan_code: 'collaborator',
+                  state: 'active',
+                },
               },
             },
           },

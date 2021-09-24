@@ -51,7 +51,7 @@ describe('CompileController', function () {
     this.ClsiCookieManager = {
       getCookieJar: sinon.stub().callsArgWith(1, null, this.jar),
     }
-    this.AuthenticationController = {
+    this.SessionManager = {
       getLoggedInUser: sinon.stub().callsArgWith(1, null, this.user),
       getLoggedInUserId: sinon.stub().returns(this.user_id),
       getSessionUser: sinon.stub().returns(this.user),
@@ -59,15 +59,14 @@ describe('CompileController', function () {
     }
     this.CompileController = SandboxedModule.require(modulePath, {
       requires: {
-        'settings-sharelatex': this.settings,
+        '@overleaf/settings': this.settings,
         request: (this.request = sinon.stub()),
         '../Project/ProjectGetter': (this.ProjectGetter = {}),
         '@overleaf/metrics': (this.Metrics = { inc: sinon.stub() }),
         './CompileManager': this.CompileManager,
         '../User/UserGetter': this.UserGetter,
         './ClsiManager': this.ClsiManager,
-        '../Authentication/AuthenticationController': this
-          .AuthenticationController,
+        '../Authentication/SessionManager': this.SessionManager,
         '../../infrastructure/RateLimiter': this.RateLimiter,
         './ClsiCookieManager': () => this.ClsiCookieManager,
       },
@@ -98,8 +97,8 @@ describe('CompileController', function () {
       })
 
       it('should look up the user id', function () {
-        return this.AuthenticationController.getLoggedInUserId
-          .calledWith(this.req)
+        return this.SessionManager.getLoggedInUserId
+          .calledWith(this.req.session)
           .should.equal(true)
       })
 

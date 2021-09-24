@@ -15,6 +15,20 @@ describe('AuthenticationController', function () {
     this.httpAuthUsers = {
       'valid-test-user': Math.random().toString(16).slice(2),
     }
+    this.user = {
+      _id: ObjectId(),
+      email: (this.email = 'USER@example.com'),
+      first_name: 'bob',
+      last_name: 'brown',
+      referal_id: 1234,
+      isAdmin: false,
+    }
+    this.password = 'banana'
+    this.req = new MockRequest()
+    this.res = new MockResponse()
+    this.callback = sinon.stub()
+    this.next = sinon.stub()
+
     this.AuthenticationController = SandboxedModule.require(modulePath, {
       requires: {
         '../User/UserAuditLogHandler': (this.UserAuditLogHandler = {
@@ -43,7 +57,7 @@ describe('AuthenticationController', function () {
           identifyUser: sinon.stub(),
         }),
         '../../infrastructure/SessionStoreManager': (this.SessionStoreManager = {}),
-        'settings-sharelatex': (this.Settings = {
+        '@overleaf/settings': (this.Settings = {
           siteUrl: 'http://www.foo.bar',
           httpAuthUsers: this.httpAuthUsers,
         }),
@@ -72,25 +86,16 @@ describe('AuthenticationController', function () {
         '../Helpers/UrlHelper': (this.UrlHelper = {
           getSafeRedirectPath: sinon.stub(),
         }),
+        './SessionManager': (this.SessionManager = {
+          isUserLoggedIn: sinon.stub().returns(true),
+          getSessionUser: sinon.stub().returns(this.user),
+        }),
       },
     })
     this.UrlHelper.getSafeRedirectPath
       .withArgs('https://evil.com')
       .returns(undefined)
     this.UrlHelper.getSafeRedirectPath.returnsArg(0)
-    this.user = {
-      _id: ObjectId(),
-      email: (this.email = 'USER@example.com'),
-      first_name: 'bob',
-      last_name: 'brown',
-      referal_id: 1234,
-      isAdmin: false,
-    }
-    this.password = 'banana'
-    this.req = new MockRequest()
-    this.res = new MockResponse()
-    this.callback = sinon.stub()
-    this.next = sinon.stub()
   })
 
   afterEach(function () {
@@ -116,116 +121,50 @@ describe('AuthenticationController', function () {
 
     it('should skip when adminDomains are not configured', function (done) {
       this.Settings.adminDomains = []
-      this.AuthenticationController.getSessionUser = sinon
-        .stub()
-        .returns(this.normalUser)
+      this.SessionManager.getSessionUser = sinon.stub().returns(this.normalUser)
       this.AuthenticationController.validateAdmin(this.req, this.res, err => {
-        this.AuthenticationController.getSessionUser.called.should.equal(false)
+        this.SessionManager.getSessionUser.called.should.equal(false)
         expect(err).to.not.exist
         done()
       })
     })
 
     it('should skip non-admin user', function (done) {
-      this.AuthenticationController.getSessionUser = sinon
-        .stub()
-        .returns(this.normalUser)
+      this.SessionManager.getSessionUser = sinon.stub().returns(this.normalUser)
       this.AuthenticationController.validateAdmin(this.req, this.res, err => {
-        this.AuthenticationController.getSessionUser.called.should.equal(true)
+        this.SessionManager.getSessionUser.called.should.equal(true)
         expect(err).to.not.exist
         done()
       })
     })
 
     it('should permit an admin with the right doman', function (done) {
-      this.AuthenticationController.getSessionUser = sinon
-        .stub()
-        .returns(this.goodAdmin)
+      this.SessionManager.getSessionUser = sinon.stub().returns(this.goodAdmin)
       this.AuthenticationController.validateAdmin(this.req, this.res, err => {
-        this.AuthenticationController.getSessionUser.called.should.equal(true)
+        this.SessionManager.getSessionUser.called.should.equal(true)
         expect(err).to.not.exist
         done()
       })
     })
 
     it('should block an admin with a missing email', function (done) {
-      this.AuthenticationController.getSessionUser = sinon
+      this.SessionManager.getSessionUser = sinon
         .stub()
         .returns({ isAdmin: true })
       this.AuthenticationController.validateAdmin(this.req, this.res, err => {
-        this.AuthenticationController.getSessionUser.called.should.equal(true)
+        this.SessionManager.getSessionUser.called.should.equal(true)
         expect(err).to.exist
         done()
       })
     })
 
     it('should block an admin with a bad domain', function (done) {
-      this.AuthenticationController.getSessionUser = sinon
-        .stub()
-        .returns(this.badAdmin)
+      this.SessionManager.getSessionUser = sinon.stub().returns(this.badAdmin)
       this.AuthenticationController.validateAdmin(this.req, this.res, err => {
-        this.AuthenticationController.getSessionUser.called.should.equal(true)
+        this.SessionManager.getSessionUser.called.should.equal(true)
         expect(err).to.exist
         done()
       })
-    })
-  })
-
-  describe('isUserLoggedIn', function () {
-    beforeEach(function () {
-      this.stub = sinon.stub(this.AuthenticationController, 'getLoggedInUserId')
-    })
-
-    afterEach(function () {
-      this.stub.restore()
-    })
-
-    it('should do the right thing in all cases', function () {
-      this.AuthenticationController.getLoggedInUserId.returns('some_id')
-      expect(this.AuthenticationController.isUserLoggedIn(this.req)).to.equal(
-        true
-      )
-      this.AuthenticationController.getLoggedInUserId.returns(null)
-      expect(this.AuthenticationController.isUserLoggedIn(this.req)).to.equal(
-        false
-      )
-      this.AuthenticationController.getLoggedInUserId.returns(false)
-      expect(this.AuthenticationController.isUserLoggedIn(this.req)).to.equal(
-        false
-      )
-      this.AuthenticationController.getLoggedInUserId.returns(undefined)
-      expect(this.AuthenticationController.isUserLoggedIn(this.req)).to.equal(
-        false
-      )
-    })
-  })
-
-  describe('setInSessionUser', function () {
-    beforeEach(function () {
-      this.user = {
-        _id: 'id',
-        first_name: 'a',
-        last_name: 'b',
-        email: 'c',
-      }
-      this.AuthenticationController.getSessionUser = sinon
-        .stub()
-        .returns(this.user)
-    })
-
-    it('should update the right properties', function () {
-      this.AuthenticationController.setInSessionUser(this.req, {
-        first_name: 'new_first_name',
-        email: 'new_email',
-      })
-      const expectedUser = {
-        _id: 'id',
-        first_name: 'new_first_name',
-        last_name: 'b',
-        email: 'new_email',
-      }
-      expect(this.user).to.deep.equal(expectedUser)
-      expect(this.user).to.deep.equal(expectedUser)
     })
   })
 
@@ -444,49 +383,6 @@ describe('AuthenticationController', function () {
     })
   })
 
-  describe('getLoggedInUserId', function () {
-    beforeEach(function () {
-      this.req = { session: {} }
-    })
-
-    it('should return the user id from the session', function () {
-      this.user_id = '2134'
-      this.req.session.user = { _id: this.user_id }
-      const result = this.AuthenticationController.getLoggedInUserId(this.req)
-      expect(result).to.equal(this.user_id)
-    })
-
-    it('should return user for passport session', function () {
-      this.user_id = '2134'
-      this.req.session = {
-        passport: {
-          user: {
-            _id: this.user_id,
-          },
-        },
-      }
-      const result = this.AuthenticationController.getLoggedInUserId(this.req)
-      expect(result).to.equal(this.user_id)
-    })
-
-    it('should return null if there is no user on the session', function () {
-      const result = this.AuthenticationController.getLoggedInUserId(this.req)
-      expect(result).to.equal(null)
-    })
-
-    it('should return null if there is no session', function () {
-      this.req = {}
-      const result = this.AuthenticationController.getLoggedInUserId(this.req)
-      expect(result).to.equal(null)
-    })
-
-    it('should return null if there is no req', function () {
-      this.req = {}
-      const result = this.AuthenticationController.getLoggedInUserId(this.req)
-      expect(result).to.equal(null)
-    })
-  })
-
   describe('requireLogin', function () {
     beforeEach(function () {
       this.user = {
@@ -517,6 +413,7 @@ describe('AuthenticationController', function () {
         this.req.session = {}
         this.AuthenticationController._redirectToLoginOrRegisterPage = sinon.stub()
         this.req.query = {}
+        this.SessionManager.isUserLoggedIn = sinon.stub().returns(false)
         this.middleware(this.req, this.res, this.next)
       })
 
@@ -630,7 +527,10 @@ describe('AuthenticationController', function () {
   describe('requireGlobalLogin', function () {
     beforeEach(function () {
       this.req.headers = {}
-      this.AuthenticationController.httpAuth = sinon.stub()
+      this.middleware = sinon.stub()
+      this.AuthenticationController.requirePrivateApiAuth = sinon
+        .stub()
+        .returns(this.middleware)
       this.setRedirect = sinon.spy(
         this.AuthenticationController,
         'setRedirectInSession'
@@ -684,8 +584,8 @@ describe('AuthenticationController', function () {
         )
       })
 
-      it('should pass the request onto httpAuth', function () {
-        this.AuthenticationController.httpAuth
+      it('should pass the request onto requirePrivateApiAuth middleware', function () {
+        this.middleware
           .calledWith(this.req, this.res, this.next)
           .should.equal(true)
       })
@@ -709,6 +609,7 @@ describe('AuthenticationController', function () {
     describe('with no login credentials', function () {
       beforeEach(function () {
         this.req.session = {}
+        this.SessionManager.isUserLoggedIn = sinon.stub().returns(false)
         this.AuthenticationController.requireGlobalLogin(
           this.req,
           this.res,
@@ -726,7 +627,16 @@ describe('AuthenticationController', function () {
     })
   })
 
-  describe('httpAuth', function () {
+  describe('requireBasicAuth', function () {
+    beforeEach(function () {
+      this.basicAuthUsers = {
+        'basic-auth-user': 'basic-auth-password',
+      }
+      this.middleware = this.AuthenticationController.requireBasicAuth(
+        this.basicAuthUsers
+      )
+    })
+
     describe('with http auth', function () {
       it('should error with incorrect user', function (done) {
         this.req.headers = {
@@ -736,12 +646,12 @@ describe('AuthenticationController', function () {
           expect(status).to.equal('Unauthorized')
           done()
         }
-        this.AuthenticationController.httpAuth(this.req, this.req)
+        this.middleware(this.req, this.req)
       })
 
       it('should error with incorrect password', function (done) {
         this.req.headers = {
-          authorization: `Basic ${Buffer.from('valid-test-user:nope').toString(
+          authorization: `Basic ${Buffer.from('basic-auth-user:nope').toString(
             'base64'
           )}`,
         }
@@ -749,12 +659,12 @@ describe('AuthenticationController', function () {
           expect(status).to.equal('Unauthorized')
           done()
         }
-        this.AuthenticationController.httpAuth(this.req, this.req)
+        this.middleware(this.req, this.req)
       })
 
       it('should fail with empty pass', function (done) {
         this.req.headers = {
-          authorization: `Basic ${Buffer.from(`invalid-test-user:`).toString(
+          authorization: `Basic ${Buffer.from(`basic-auth-user:`).toString(
             'base64'
           )}`,
         }
@@ -762,17 +672,30 @@ describe('AuthenticationController', function () {
           expect(status).to.equal('Unauthorized')
           done()
         }
-        this.AuthenticationController.httpAuth(this.req, this.req)
+        this.middleware(this.req, this.req)
       })
 
       it('should succeed with correct user/pass', function (done) {
         this.req.headers = {
           authorization: `Basic ${Buffer.from(
-            `valid-test-user:${this.httpAuthUsers['valid-test-user']}`
+            `basic-auth-user:${this.basicAuthUsers['basic-auth-user']}`
           ).toString('base64')}`,
         }
-        this.AuthenticationController.httpAuth(this.req, this.res, done)
+        this.middleware(this.req, this.res, done)
       })
+    })
+  })
+
+  describe('requirePrivateApiAuth', function () {
+    beforeEach(function () {
+      this.AuthenticationController.requireBasicAuth = sinon.stub()
+    })
+
+    it('should call requireBasicAuth with the private API user details', function () {
+      this.AuthenticationController.requirePrivateApiAuth()
+      this.AuthenticationController.requireBasicAuth
+        .calledWith(this.httpAuthUsers)
+        .should.equal(true)
     })
   })
 
@@ -790,6 +713,7 @@ describe('AuthenticationController', function () {
     describe('they have come directly to the url', function () {
       beforeEach(function () {
         this.req.query = {}
+        this.SessionManager.isUserLoggedIn = sinon.stub().returns(false)
         this.middleware(this.req, this.res, this.next)
       })
 
@@ -806,6 +730,7 @@ describe('AuthenticationController', function () {
     describe('they have come via a templates link', function () {
       beforeEach(function () {
         this.req.query.zipUrl = 'something'
+        this.SessionManager.isUserLoggedIn = sinon.stub().returns(false)
         this.middleware(this.req, this.res, this.next)
       })
 
@@ -822,6 +747,7 @@ describe('AuthenticationController', function () {
     describe('they have been invited to a project', function () {
       beforeEach(function () {
         this.req.query.project_name = 'something'
+        this.SessionManager.isUserLoggedIn = sinon.stub().returns(false)
         this.middleware(this.req, this.res, this.next)
       })
 

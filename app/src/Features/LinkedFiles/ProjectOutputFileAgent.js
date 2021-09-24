@@ -15,12 +15,13 @@
 let ProjectOutputFileAgent
 const AuthorizationManager = require('../Authorization/AuthorizationManager')
 const ProjectGetter = require('../Project/ProjectGetter')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 const CompileManager = require('../Compile/CompileManager')
 const ClsiManager = require('../Compile/ClsiManager')
 const ProjectFileAgent = require('./ProjectFileAgent')
 const _ = require('underscore')
 const {
+  CompileFailedError,
   BadDataError,
   AccessDeniedError,
   BadEntityTypeError,
@@ -268,7 +269,7 @@ module.exports = ProjectOutputFileAgent = {
             return callback(err)
           }
           if (status !== 'success') {
-            return callback(new OutputFileFetchFailedError())
+            return callback(new CompileFailedError())
           }
           const outputFile = _.find(
             outputFiles,

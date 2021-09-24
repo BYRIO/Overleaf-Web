@@ -1,15 +1,16 @@
 const async = require('async')
 const OError = require('@overleaf/o-error')
 const PlansLocator = require('./PlansLocator')
-const _ = require('underscore')
+const _ = require('lodash')
 const SubscriptionLocator = require('./SubscriptionLocator')
 const UserFeaturesUpdater = require('./UserFeaturesUpdater')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 const logger = require('logger-sharelatex')
 const ReferalFeatures = require('../Referal/ReferalFeatures')
 const V1SubscriptionManager = require('./V1SubscriptionManager')
 const InstitutionsFeatures = require('../Institutions/InstitutionsFeatures')
 const UserGetter = require('../User/UserGetter')
+const AnalyticsManager = require('../Analytics/AnalyticsManager')
 
 const FeaturesUpdater = {
   refreshFeatures(userId, reason, callback = () => {}) {
@@ -23,6 +24,16 @@ const FeaturesUpdater = {
           return callback(error)
         }
         logger.log({ userId, features }, 'updating user features')
+
+        const matchedFeatureSet = FeaturesUpdater._getMatchedFeatureSet(
+          features
+        )
+        AnalyticsManager.setUserProperty(
+          userId,
+          'feature-set',
+          matchedFeatureSet
+        )
+
         UserFeaturesUpdater.updateFeatures(
           userId,
           features,
@@ -175,7 +186,7 @@ const FeaturesUpdater = {
           err,
           FeaturesUpdater._mergeFeatures(
             V1SubscriptionManager.getGrandfatheredFeaturesForV1User(v1Id) || {},
-            FeaturesUpdater._planCodeToFeatures(planCode)
+            FeaturesUpdater.planCodeToFeatures(planCode)
           )
         )
       }
@@ -217,13 +228,18 @@ const FeaturesUpdater = {
     return features
   },
 
+  isFeatureSetBetter(featuresA, featuresB) {
+    const mergedFeatures = FeaturesUpdater._mergeFeatures(featuresA, featuresB)
+    return _.isEqual(featuresA, mergedFeatures)
+  },
+
   _subscriptionToFeatures(subscription) {
-    return FeaturesUpdater._planCodeToFeatures(
+    return FeaturesUpdater.planCodeToFeatures(
       subscription ? subscription.planCode : undefined
     )
   },
 
-  _planCodeToFeatures(planCode) {
+  planCodeToFeatures(planCode) {
     if (!planCode) {
       return {}
     }
@@ -300,6 +316,15 @@ const FeaturesUpdater = {
         return FeaturesUpdater.refreshFeatures(user._id, 'sync-v1', callback)
       }
     )
+  },
+
+  _getMatchedFeatureSet(features) {
+    for (const [name, featureSet] of Object.entries(Settings.features)) {
+      if (_.isEqual(features, featureSet)) {
+        return name
+      }
+    }
+    return 'mixed'
   },
 }
 

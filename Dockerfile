@@ -1,5 +1,5 @@
 # the base image is suitable for running web with /app bind mounted
-FROM node:12.21.0 as base
+FROM node:12.22.3 as base
 
 WORKDIR /app
 
@@ -50,6 +50,7 @@ RUN chmod 0755 ./install_deps.sh && ./install_deps.sh
 FROM webpack as app
 
 RUN find /app/public -name '*.js.map' -delete
+RUN rm /app/modules/server-ce-scripts -rf
 USER node
 
 CMD ["node", "--expose-gc", "app.js"]

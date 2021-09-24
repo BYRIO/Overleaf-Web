@@ -17,13 +17,13 @@ const TagsHandler = require('../Tags/TagsHandler')
 const SubscriptionLocator = require('../Subscription/SubscriptionLocator')
 const NotificationsHandler = require('../Notifications/NotificationsHandler')
 const LimitationsManager = require('../Subscription/LimitationsManager')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 const AuthorizationManager = require('../Authorization/AuthorizationManager')
 const InactiveProjectManager = require('../InactiveData/InactiveProjectManager')
 const ProjectUpdateHandler = require('./ProjectUpdateHandler')
 const ProjectGetter = require('./ProjectGetter')
 const PrivilegeLevels = require('../Authorization/PrivilegeLevels')
-const AuthenticationController = require('../Authentication/AuthenticationController')
+const SessionManager = require('../Authentication/SessionManager')
 const Sources = require('../Authorization/Sources')
 const TokenAccessHandler = require('../TokenAccess/TokenAccessHandler')
 const CollaboratorsGetter = require('../Collaborators/CollaboratorsGetter')
@@ -141,7 +141,7 @@ const ProjectController = {
 
   deleteProject(req, res) {
     const projectId = req.params.Project_id
-    const user = AuthenticationController.getSessionUser(req)
+    const user = SessionManager.getSessionUser(req.session)
     const cb = err => {
       if (err != null) {
         res.sendStatus(500)
@@ -158,7 +158,7 @@ const ProjectController = {
 
   archiveProject(req, res, next) {
     const projectId = req.params.Project_id
-    const userId = AuthenticationController.getLoggedInUserId(req)
+    const userId = SessionManager.getLoggedInUserId(req.session)
 
     ProjectDeleter.archiveProject(projectId, userId, function (err) {
       if (err != null) {
@@ -171,7 +171,7 @@ const ProjectController = {
 
   unarchiveProject(req, res, next) {
     const projectId = req.params.Project_id
-    const userId = AuthenticationController.getLoggedInUserId(req)
+    const userId = SessionManager.getLoggedInUserId(req.session)
 
     ProjectDeleter.unarchiveProject(projectId, userId, function (err) {
       if (err != null) {
@@ -184,7 +184,7 @@ const ProjectController = {
 
   trashProject(req, res, next) {
     const projectId = req.params.project_id
-    const userId = AuthenticationController.getLoggedInUserId(req)
+    const userId = SessionManager.getLoggedInUserId(req.session)
 
     ProjectDeleter.trashProject(projectId, userId, function (err) {
       if (err != null) {
@@ -197,7 +197,7 @@ const ProjectController = {
 
   untrashProject(req, res, next) {
     const projectId = req.params.project_id
-    const userId = AuthenticationController.getLoggedInUserId(req)
+    const userId = SessionManager.getLoggedInUserId(req.session)
 
     ProjectDeleter.untrashProject(projectId, userId, function (err) {
       if (err != null) {
@@ -246,10 +246,10 @@ const ProjectController = {
     const projectId = req.params.Project_id
     const { projectName } = req.body
     logger.log({ projectId, projectName }, 'cloning project')
-    if (!AuthenticationController.isUserLoggedIn(req)) {
+    if (!SessionManager.isUserLoggedIn(req.session)) {
       return res.send({ redir: '/register' })
     }
-    const currentUser = AuthenticationController.getSessionUser(req)
+    const currentUser = SessionManager.getSessionUser(req.session)
     const { first_name: firstName, last_name: lastName, email } = currentUser
     ProjectDuplicator.duplicate(
       currentUser,
@@ -279,7 +279,7 @@ const ProjectController = {
   },
 
   newProject(req, res, next) {
-    const currentUser = AuthenticationController.getSessionUser(req)
+    const currentUser = SessionManager.getSessionUser(req.session)
     const {
       first_name: firstName,
       last_name: lastName,
@@ -330,7 +330,7 @@ const ProjectController = {
   },
 
   userProjectsJson(req, res, next) {
-    const userId = AuthenticationController.getLoggedInUserId(req)
+    const userId = SessionManager.getLoggedInUserId(req.session)
     ProjectGetter.findAllUsersProjects(
       userId,
       'name lastUpdated publicAccesLevel archived trashed owner_ref tokens',
@@ -377,8 +377,8 @@ const ProjectController = {
 
   projectListPage(req, res, next) {
     const timer = new metrics.Timer('project-list')
-    const userId = AuthenticationController.getLoggedInUserId(req)
-    const currentUser = AuthenticationController.getSessionUser(req)
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const currentUser = SessionManager.getSessionUser(req.session)
     async.parallel(
       {
         tags(cb) {
@@ -584,18 +584,7 @@ const ProjectController = {
             hasSubscription: results.hasSubscription,
             reconfirmedViaSAML,
             zipFileSizeLimit: Settings.maxUploadSize,
-          }
-
-          if (
-            Settings.algolia &&
-            Settings.algolia.app_id &&
-            Settings.algolia.read_only_api_key
-          ) {
-            viewModel.showUserDetailsArea = true
-            viewModel.algolia_api_key = Settings.algolia.read_only_api_key
-            viewModel.algolia_app_id = Settings.algolia.app_id
-          } else {
-            viewModel.showUserDetailsArea = false
+            isOverleaf: !!Settings.overleaf,
           }
 
           const paidUser =
@@ -628,9 +617,9 @@ const ProjectController = {
     }
 
     let anonymous, userId, sessionUser
-    if (AuthenticationController.isUserLoggedIn(req)) {
-      sessionUser = AuthenticationController.getSessionUser(req)
-      userId = AuthenticationController.getLoggedInUserId(req)
+    if (SessionManager.isUserLoggedIn(req.session)) {
+      sessionUser = SessionManager.getSessionUser(req.session)
+      userId = SessionManager.getLoggedInUserId(req.session)
       anonymous = false
     } else {
       sessionUser = null
@@ -721,6 +710,21 @@ const ProjectController = {
         flushToTpds: cb => {
           TpdsProjectFlusher.flushProjectToTpdsIfNeeded(projectId, cb)
         },
+        pdfCachingFeatureFlag(cb) {
+          if (!Settings.enablePdfCaching) return cb(null, '')
+          if (!userId) return cb(null, 'enable-caching-only')
+          SplitTestHandler.getTestSegmentation(
+            userId,
+            'pdf_caching_full',
+            (err, segmentation) => {
+              if (err) {
+                // Do not fail loading the editor.
+                return cb(null, '')
+              }
+              cb(null, (segmentation && segmentation.variant) || '')
+            }
+          )
+        },
       },
       (err, results) => {
         if (err != null) {
@@ -731,6 +735,7 @@ const ProjectController = {
         const { user } = results
         const { subscription } = results
         const { brandVariation } = results
+        const { pdfCachingFeatureFlag } = results
 
         const anonRequestToken = TokenAccessHandler.getRequestToken(
           req,
@@ -802,137 +807,97 @@ const ProjectController = {
               }
             }
 
-            let trackPdfDownload = false
-            let enablePdfCaching = false
-
-            const render = () => {
-              res.render('project/editor', {
-                title: project.name,
-                priority_title: true,
-                bodyClasses: ['editor'],
-                project_id: project._id,
-                user: {
-                  id: userId,
-                  email: user.email,
-                  first_name: user.first_name,
-                  last_name: user.last_name,
-                  referal_id: user.referal_id,
-                  signUpDate: user.signUpDate,
-                  allowedFreeTrial: allowedFreeTrial,
-                  featureSwitches: user.featureSwitches,
-                  features: user.features,
-                  refProviders: _.mapValues(user.refProviders, Boolean),
-                  alphaProgram: user.alphaProgram,
-                  betaProgram: user.betaProgram,
-                  isAdmin: user.isAdmin,
-                },
-                userSettings: {
-                  mode: user.ace.mode,
-                  editorTheme: user.ace.theme,
-                  fontSize: user.ace.fontSize,
-                  autoComplete: user.ace.autoComplete,
-                  autoPairDelimiters: user.ace.autoPairDelimiters,
-                  pdfViewer: user.ace.pdfViewer,
-                  syntaxValidation: user.ace.syntaxValidation,
-                  fontFamily: user.ace.fontFamily || 'lucida',
-                  lineHeight: user.ace.lineHeight || 'normal',
-                  overallTheme: user.ace.overallTheme,
-                },
-                privilegeLevel,
-                chatUrl: Settings.apis.chat.url,
-                anonymous,
-                anonymousAccessToken: anonymous ? anonRequestToken : null,
-                isTokenMember,
-                isRestrictedTokenMember: AuthorizationManager.isRestrictedUser(
-                  userId,
-                  privilegeLevel,
-                  isTokenMember
-                ),
-                languages: Settings.languages,
-                editorThemes: THEME_LIST,
-                maxDocLength: Settings.max_doc_length,
-                useV2History:
-                  project.overleaf &&
-                  project.overleaf.history &&
-                  Boolean(project.overleaf.history.display),
-                brandVariation,
-                allowedImageNames,
-                gitBridgePublicBaseUrl: Settings.gitBridgePublicBaseUrl,
-                wsUrl,
-                showSupport: Features.hasFeature('support'),
-                showNewLogsUI: shouldDisplayFeature(
-                  'new_logs_ui',
-                  logsUIVariant.newLogsUI
-                ),
-                logsUISubvariant: logsUIVariant.subvariant,
-                showNewNavigationUI: shouldDisplayFeature(
-                  'new_navigation_ui',
-                  user.alphaProgram
-                ),
-                showReactShareModal: shouldDisplayFeature(
-                  'new_share_modal_ui',
-                  true
-                ),
-                showReactDropboxModal: shouldDisplayFeature(
-                  'new_dropbox_modal_ui',
-                  user.betaProgram
-                ),
-                showReactGithubSync: shouldDisplayFeature(
-                  'new_github_sync_ui',
-                  user.betaProgram || user.alphaProgram
-                ),
-                showNewBinaryFileUI: shouldDisplayFeature('new_binary_file'),
-                showSymbolPalette: shouldDisplayFeature('symbol_palette'),
-                trackPdfDownload,
-                enablePdfCaching,
-              })
-              timer.done()
+            function partOfPdfCachingRollout(flag) {
+              if (!Settings.enablePdfCaching) {
+                // The feature is disabled globally.
+                return false
+              }
+              const canSeeFeaturePreview = pdfCachingFeatureFlag.includes(flag)
+              if (!canSeeFeaturePreview) {
+                // The user is not in the target group.
+                return false
+              }
+              // Optionally let the user opt-out.
+              // The will opt-out of both caching and metrics collection,
+              //  as if this editing session never happened.
+              return shouldDisplayFeature('enable_pdf_caching', true)
             }
 
-            Promise.all([
-              async () => {
-                if (Settings.enablePdfCaching) {
-                  if (user.alphaProgram) {
-                    trackPdfDownload = true
-                  } else if (user.betaProgram) {
-                    const testSegmentation = await SplitTestHandler.promises.getTestSegmentation(
-                      userId,
-                      'track_pdf_download'
-                    )
-                    trackPdfDownload =
-                      testSegmentation.enabled &&
-                      testSegmentation.variant === 'enabled'
-                  }
-                }
+            res.render('project/editor', {
+              title: project.name,
+              priority_title: true,
+              bodyClasses: ['editor'],
+              project_id: project._id,
+              user: {
+                id: userId,
+                email: user.email,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                referal_id: user.referal_id,
+                signUpDate: user.signUpDate,
+                allowedFreeTrial: allowedFreeTrial,
+                featureSwitches: user.featureSwitches,
+                features: user.features,
+                refProviders: _.mapValues(user.refProviders, Boolean),
+                alphaProgram: user.alphaProgram,
+                betaProgram: user.betaProgram,
+                isAdmin: user.isAdmin,
               },
-              async () => {
-                if (Settings.enablePdfCaching) {
-                  if (user.alphaProgram) {
-                    enablePdfCaching = shouldDisplayFeature(
-                      'enable_pdf_caching',
-                      true
-                    )
-                  } else if (user.betaProgram) {
-                    const testSegmentation = await SplitTestHandler.promises.getTestSegmentation(
-                      userId,
-                      'enable_pdf_caching'
-                    )
-                    trackPdfDownload = shouldDisplayFeature(
-                      'enable_pdf_caching',
-                      testSegmentation.enabled &&
-                        testSegmentation.variant === 'enabled'
-                    )
-                  }
-                }
+              userSettings: {
+                mode: user.ace.mode,
+                editorTheme: user.ace.theme,
+                fontSize: user.ace.fontSize,
+                autoComplete: user.ace.autoComplete,
+                autoPairDelimiters: user.ace.autoPairDelimiters,
+                pdfViewer: user.ace.pdfViewer,
+                syntaxValidation: user.ace.syntaxValidation,
+                fontFamily: user.ace.fontFamily || 'lucida',
+                lineHeight: user.ace.lineHeight || 'normal',
+                overallTheme: user.ace.overallTheme,
               },
-            ])
-              .then(() => {
-                render()
-              })
-              .catch(error => {
-                logger.error({ err: error }, 'Failed to get test segmentation')
-                render()
-              })
+              privilegeLevel,
+              anonymous,
+              anonymousAccessToken: anonymous ? anonRequestToken : null,
+              isTokenMember,
+              isRestrictedTokenMember: AuthorizationManager.isRestrictedUser(
+                userId,
+                privilegeLevel,
+                isTokenMember
+              ),
+              languages: Settings.languages,
+              editorThemes: THEME_LIST,
+              maxDocLength: Settings.max_doc_length,
+              useV2History:
+                project.overleaf &&
+                project.overleaf.history &&
+                Boolean(project.overleaf.history.display),
+              brandVariation,
+              allowedImageNames,
+              gitBridgePublicBaseUrl: Settings.gitBridgePublicBaseUrl,
+              wsUrl,
+              showSupport: Features.hasFeature('support'),
+              showNewLogsUI: shouldDisplayFeature(
+                'new_logs_ui',
+                logsUIVariant.newLogsUI
+              ),
+              logsUISubvariant: logsUIVariant.subvariant,
+              showNewNavigationUI: shouldDisplayFeature(
+                'new_navigation_ui',
+                true
+              ),
+              showNewFileViewUI: shouldDisplayFeature(
+                'new_file_view',
+                user.alphaProgram || user.betaProgram
+              ),
+              showSymbolPalette: shouldDisplayFeature(
+                'symbol_palette',
+                user.alphaProgram || user.betaProgram
+              ),
+              trackPdfDownload: partOfPdfCachingRollout('collect-metrics'),
+              enablePdfCaching: partOfPdfCachingRollout('enable-caching'),
+              resetServiceWorker: Boolean(Settings.resetServiceWorker),
+            })
+            timer.done()
           }
         )
       }

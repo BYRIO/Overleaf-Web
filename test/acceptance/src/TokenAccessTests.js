@@ -2,16 +2,9 @@ const { expect } = require('chai')
 const async = require('async')
 const User = require('./helpers/User')
 const request = require('./helpers/request')
-const settings = require('settings-sharelatex')
-const { db, ObjectId } = require('../../../app/src/infrastructure/mongodb')
-const MockV1ApiClass = require('./mocks/MockV1Api')
+const settings = require('@overleaf/settings')
+const { db } = require('../../../app/src/infrastructure/mongodb')
 const expectErrorResponse = require('./helpers/expectErrorResponse')
-
-let MockV1Api
-
-before(function () {
-  MockV1Api = MockV1ApiClass.instance()
-})
 
 const tryEditorAccess = (user, projectId, test, callback) =>
   async.series(
@@ -1211,229 +1204,69 @@ describe('TokenAccess', function () {
     })
   })
 
-  describe('unimported v1 project', function () {
-    beforeEach(function () {
-      settings.overleaf = { host: 'http://localhost:5000' }
-    })
-
-    afterEach(function () {
-      delete settings.overleaf
-    })
-
-    it('should show error page for read and write token', function (done) {
-      const unimportedV1Token = '123abcdefabcdef'
-      tryReadAndWriteTokenAccess(
-        this.owner,
-        unimportedV1Token,
-        (response, body) => {
-          expect(response.statusCode).to.equal(200)
-        },
-        (response, body) => {
-          expect(response.statusCode).to.equal(200)
-          expect(body).to.deep.equal({ v1Import: { status: 'cannotImport' } })
-        },
-        done
-      )
-    })
-
-    it('should show error page for read only token to v1', function (done) {
-      const unimportedV1Token = 'aaaaaabbbbbb'
-      tryReadOnlyTokenAccess(
-        this.owner,
-        unimportedV1Token,
-        (response, body) => {
-          expect(response.statusCode).to.equal(200)
-        },
-        (response, body) => {
-          expect(response.statusCode).to.equal(200)
-          expect(body).to.deep.equal({ v1Import: { status: 'cannotImport' } })
-        },
-        done
-      )
-    })
-  })
-
-  describe('importing v1 project', function () {
+  describe('deleted project', function () {
     beforeEach(function (done) {
-      settings.projectImportingCheckMaxCreateDelta = 3600
-      settings.overleaf = { host: 'http://localhost:5000' }
       this.owner.createProject(
-        `token-rw-test${Math.random()}`,
+        `delete-test${Math.random()}`,
         (err, projectId) => {
           if (err != null) {
             return done(err)
           }
           this.projectId = projectId
-          db.users.updateOne(
-            { _id: ObjectId(this.owner._id.toString()) },
-            { $set: { 'overleaf.id': 321321 } },
-            err => {
-              if (err) {
+          this.owner.makeTokenBased(this.projectId, err => {
+            if (err != null) {
+              return done(err)
+            }
+            this.owner.getProject(this.projectId, (err, project) => {
+              if (err != null) {
                 return done(err)
               }
-              this.owner.makeTokenBased(this.projectId, err => {
-                if (err != null) {
-                  return done(err)
-                }
-                db.projects.updateOne(
-                  { _id: ObjectId(projectId) },
-                  { $set: { overleaf: { id: 1234 } } },
-                  err => {
-                    if (err != null) {
-                      return done(err)
-                    }
-                    this.owner.getProject(this.projectId, (err, project) => {
-                      if (err != null) {
-                        return done(err)
-                      }
-                      this.tokens = project.tokens
-                      const docInfo = {
-                        exists: true,
-                        exported: false,
-                        has_owner: true,
-                        name: 'Test Project Import Example',
-                      }
-                      MockV1Api.setDocInfo(this.tokens.readAndWrite, docInfo)
-                      MockV1Api.setDocInfo(this.tokens.readOnly, docInfo)
-                      db.projects.deleteOne({ _id: ObjectId(projectId) }, done)
-                    })
-                  }
-                )
-              })
-            }
-          )
+              this.tokens = project.tokens
+              done()
+            })
+          })
         }
       )
     })
 
-    afterEach(function () {
-      delete settings.projectImportingCheckMaxCreateDelta
-      delete settings.overleaf
-    })
-
-    it('should show importing page for read, and read-write tokens', function (done) {
+    it('should 404', function (done) {
       async.series(
         [
-          cb =>
-            tryReadAndWriteTokenAccess(
-              this.owner,
-              this.tokens.readAndWrite,
-              (response, body) => {
-                expect(response.statusCode).to.equal(200)
-              },
-              (response, body) => {
-                expect(response.statusCode).to.equal(200)
-                expect(body).to.deep.equal({
-                  v1Import: {
-                    status: 'canDownloadZip',
-                    projectId: this.tokens.readAndWrite,
-                    hasOwner: true,
-                    name: 'Test Project Import Example',
-                  },
-                })
-              },
-              cb
-            ),
-          cb =>
+          // delete project
+          cb => {
+            this.owner.deleteProject(this.projectId, cb)
+          },
+          cb => {
+            // use read-only token
             tryReadOnlyTokenAccess(
-              this.owner,
+              this.other1,
               this.tokens.readOnly,
               (response, body) => {
                 expect(response.statusCode).to.equal(200)
               },
               (response, body) => {
+                expect(response.statusCode).to.equal(404)
+              },
+              cb
+            )
+          },
+          cb => {
+            // use read-write token
+            tryReadAndWriteTokenAccess(
+              this.other1,
+              this.tokens.readAndWrite,
+              (response, body) => {
                 expect(response.statusCode).to.equal(200)
-                expect(body).to.deep.equal({
-                  v1Import: {
-                    status: 'canDownloadZip',
-                    projectId: this.tokens.readOnly,
-                    hasOwner: true,
-                    name: 'Test Project Import Example',
-                  },
-                })
               },
-              cb
-            ),
-          cb =>
-            tryEditorAccess(
-              this.owner,
-              this.projectId,
               (response, body) => {
                 expect(response.statusCode).to.equal(404)
               },
               cb
-            ),
-          cb =>
-            tryContentAccess(
-              this.other2,
-              this.projectId,
-              (response, body) => {
-                expect(response.statusCode).to.equal(404)
-              },
-              cb
-            ),
+            )
+          },
         ],
         done
       )
-    })
-
-    describe('when the v1 doc does not exist', function (done) {
-      beforeEach(function (done) {
-        const docInfo = null
-        MockV1Api.setDocInfo(this.tokens.readAndWrite, docInfo)
-        MockV1Api.setDocInfo(this.tokens.readOnly, docInfo)
-        done()
-      })
-
-      it('should get a 404 response on the post endpoint', function (done) {
-        async.series(
-          [
-            cb =>
-              tryReadAndWriteTokenAccess(
-                this.owner,
-                this.tokens.readAndWrite,
-                (response, body) => {
-                  expect(response.statusCode).to.equal(200)
-                },
-                (response, body) => {
-                  expect(response.statusCode).to.equal(404)
-                },
-                cb
-              ),
-            cb =>
-              tryReadOnlyTokenAccess(
-                this.owner,
-                this.tokens.readOnly,
-                (response, body) => {
-                  expect(response.statusCode).to.equal(200)
-                },
-                (response, body) => {
-                  expect(response.statusCode).to.equal(404)
-                },
-                cb
-              ),
-            cb =>
-              tryEditorAccess(
-                this.owner,
-                this.projectId,
-                (response, body) => {
-                  expect(response.statusCode).to.equal(404)
-                },
-                cb
-              ),
-            cb =>
-              tryContentAccess(
-                this.other2,
-                this.projectId,
-                (response, body) => {
-                  expect(response.statusCode).to.equal(404)
-                },
-                cb
-              ),
-          ],
-          done
-        )
-      })
     })
   })
 })

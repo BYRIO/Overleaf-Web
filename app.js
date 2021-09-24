@@ -11,7 +11,7 @@
  */
 const metrics = require('@overleaf/metrics')
 metrics.initialize(process.env.METRICS_APP_NAME || 'web')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 const logger = require('logger-sharelatex')
 const PlansLocator = require('./app/src/Features/Subscription/PlansLocator')
 logger.initialize(process.env.METRICS_APP_NAME || 'web')
@@ -22,6 +22,11 @@ logger.logger.serializers.project = require('./app/src/infrastructure/LoggerSeri
 if ((Settings.sentry != null ? Settings.sentry.dsn : undefined) != null) {
   logger.initializeErrorReporting(Settings.sentry.dsn)
 }
+
+const http = require('http')
+const https = require('https')
+http.globalAgent.maxSockets = Settings.limits.httpGlobalAgentMaxSockets
+https.globalAgent.maxSockets = Settings.limits.httpsGlobalAgentMaxSockets
 
 metrics.memory.monitor(logger)
 

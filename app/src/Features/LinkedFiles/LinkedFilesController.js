@@ -13,14 +13,15 @@
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
  */
 let LinkedFilesController
-const AuthenticationController = require('../Authentication/AuthenticationController')
+const SessionManager = require('../Authentication/SessionManager')
 const EditorController = require('../Editor/EditorController')
 const ProjectLocator = require('../Project/ProjectLocator')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 const logger = require('logger-sharelatex')
 const _ = require('underscore')
 const LinkedFilesHandler = require('./LinkedFilesHandler')
 const {
+  CompileFailedError,
   UrlFetchFailedError,
   InvalidUrlError,
   OutputFileFetchFailedError,
@@ -65,7 +66,7 @@ module.exports = LinkedFilesController = {
   createLinkedFile(req, res, next) {
     const { project_id } = req.params
     const { name, provider, data, parent_folder_id } = req.body
-    const user_id = AuthenticationController.getLoggedInUserId(req)
+    const user_id = SessionManager.getLoggedInUserId(req.session)
 
     const Agent = LinkedFilesController._getAgent(provider)
     if (Agent == null) {
@@ -91,7 +92,7 @@ module.exports = LinkedFilesController = {
 
   refreshLinkedFile(req, res, next) {
     const { project_id, file_id } = req.params
-    const user_id = AuthenticationController.getLoggedInUserId(req)
+    const user_id = SessionManager.getLoggedInUserId(req.session)
 
     return LinkedFilesHandler.getFileById(
       project_id,
@@ -152,6 +153,10 @@ module.exports = LinkedFilesController = {
         .send(
           'Sorry, the source project is not yet imported to Overleaf v2. Please import it to Overleaf v2 to refresh this file'
         )
+    } else if (error instanceof CompileFailedError) {
+      return res
+        .status(422)
+        .send(res.locals.translate('generic_linked_file_compile_error'))
     } else if (error instanceof OutputFileFetchFailedError) {
       return res.status(404).send('Could not get output file')
     } else if (error instanceof UrlFetchFailedError) {
@@ -176,6 +181,10 @@ module.exports = LinkedFilesController = {
       return res.status(400).send('This file cannot be refreshed')
     } else if (error.message === 'project_has_too_many_files') {
       return res.status(400).send('too many files')
+    } else if (/\bECONNREFUSED\b/.test(error.message)) {
+      return res
+        .status(500)
+        .send('Importing references is not currently available')
     } else {
       return next(error)
     }

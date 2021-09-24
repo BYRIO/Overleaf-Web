@@ -1,6 +1,5 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
-import React from 'react'
 import { screen, render, fireEvent, waitFor } from '@testing-library/react'
 import SymbolPalette from '../../../../../frontend/js/features/symbol-palette/components/symbol-palette'
 
@@ -67,9 +66,11 @@ describe('symbol palette', function () {
     // wait for the symbols to be filtered
     await waitFor(async () => {
       symbols = await screen.findAllByRole('option')
-      console.log(symbols.length)
       expect(symbols).to.have.length(2)
     })
+
+    // check the search hint is displayed
+    screen.getByText('Showing search results for "pi"')
 
     // press Tab to select the symbols
     fireEvent.keyDown(container, { key: 'Tab' })
@@ -91,11 +92,12 @@ describe('symbol palette', function () {
     selectedSymbol.click()
 
     expect(handleSelect).to.have.been.calledWith({
+      aliases: ['Π'],
       category: 'Greek',
       character: 'Π',
       codepoint: 'U+003A0',
       command: '\\Pi',
-      description: 'uppercase Greek letter Pi',
+      description: 'Uppercase Greek letter Pi',
       notes: 'Use \\prod for the product.',
     })
   })
